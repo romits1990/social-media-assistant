@@ -1,0 +1,1 @@
+export const SCRAP_DUMP_FOLDER = "scraped_dumps";
