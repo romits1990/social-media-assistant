@@ -1,11 +1,7 @@
 import { parseArgs } from 'node:util';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import { createHash } from 'node:crypto';
 import { getValidUrlDetails } from "@/lib/url.helper";
 import { extractPageUrls } from "@/services/crawler.service";
-import { scrapePage } from '@/services/scrapper.service';
-import { SCRAP_DUMP_FOLDER } from '@/constants/scrap.constants';
+import { scrapePage, createScrapDumpDirectory, deleteScrapDumpDirectory, writeScrapedContentToFile } from '@/services/scrapper.service';
 
 const argsSchema = {
     options: {
@@ -30,27 +26,20 @@ const run = async () => {
             process.exit(1);
         }
 
-        const outputDir = path.join(process.cwd(), SCRAP_DUMP_FOLDER, hostname!);
-        await fs.mkdir(outputDir, { recursive: true });
+        const outputDir = await createScrapDumpDirectory(hostname!);
 
         let processedPageCount = 0;
         for(const url of pageUrls) {
             const scrapeResults = await scrapePage(url);
             if (scrapeResults && scrapeResults.textContent) {
                 console.log(`[Success] Extracted ${scrapeResults.textContent.length} characters.`);
-                const fileName = createHash('sha256').update(url).digest('hex') + '.json';
-                const fullFilePath = path.join(outputDir, fileName);
-                await fs.writeFile(
-                    fullFilePath, 
-                    JSON.stringify(scrapeResults, null, 2),
-                    'utf-8'
-                );
+                await writeScrapedContentToFile(scrapeResults, url, outputDir);
                 processedPageCount++;
             }
         }
         if(processedPageCount == 0) {
             console.log("No Page processed.");
-            await fs.rmdir(outputDir);
+            await deleteScrapDumpDirectory(outputDir);
         }
 
         console.log('Page content download completed successfully.');
@@ -63,3 +52,4 @@ const run = async () => {
 };
 
 run();
+

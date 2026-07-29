@@ -1,7 +1,11 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { createHash } from 'node:crypto';
+import { SCRAP_DUMP_FOLDER } from '@/constants/scrap.constants';
 
-export interface ScrapedPageData {
+export type ScrapedPageData = {
   url: string;
   title: string;
   description: string;
@@ -38,10 +42,7 @@ export const scrapePage = async (url: string): Promise<ScrapedPageData | null> =
       bodyContainer = $dom('body');
     }
 
-    const textContent = bodyContainer
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
+    const textContent = bodyContainer.text().trim();
 
     return {
       url,
@@ -56,4 +57,49 @@ export const scrapePage = async (url: string): Promise<ScrapedPageData | null> =
     console.error(`[Scraper Error] Failed extraction on: ${url} -> ${errorMsg}`);
     return null;
   }
+};
+
+export const createScrapDumpDirectory = async (domainFolderName: string) => {
+    const outputDir = path.join(process.cwd(), SCRAP_DUMP_FOLDER, domainFolderName);
+    await fs.mkdir(outputDir, { recursive: true });
+    return outputDir;
+};
+
+export const deleteScrapDumpDirectory = async (directoryPath: string) => {
+    await fs.rmdir(directoryPath);
+};
+
+export const writeScrapedContentToFile = async (content: ScrapedPageData, url: string, outputDir: string) => {
+    const fileName = createHash('sha256').update(url).digest('hex') + '.json';
+    const fullFilePath = path.join(outputDir, fileName);
+    await fs.writeFile(
+        fullFilePath, 
+        JSON.stringify(content, null, 2),
+        'utf-8'
+    );
+};
+
+export const getScrapedPageFiles = async (domainFolderName: string): Promise<string[]> => {
+    try {
+        const scrapDumpPath = path.join(process.cwd(), SCRAP_DUMP_FOLDER, domainFolderName);
+        const files: string[] = await fs.readdir(scrapDumpPath);
+        return files.filter(fileName => fileName.endsWith('.json'));
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Error occurred when getting folder content of ${domainFolderName}: ${errorMessage}`);
+        return [];
+    }
+};
+
+export const readScrapedFileContent = async (fileName: string, domainFolderName: string): Promise<ScrapedPageData | null> => {
+    try {
+        const filePath = path.join(process.cwd(), SCRAP_DUMP_FOLDER, domainFolderName, fileName);
+        const rawContent = await fs.readFile(filePath, 'utf-8');
+        const parsedContent = JSON.parse(rawContent);
+        return parsedContent as ScrapedPageData;
+    }
+    catch (error) {
+        return null;
+    }
 };

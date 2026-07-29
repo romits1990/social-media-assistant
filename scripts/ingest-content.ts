@@ -1,8 +1,10 @@
 import { parseArgs } from 'node:util';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
+import pLimit from 'p-limit';
 import { getValidUrlDetails } from "@/lib/url.helper";
-import { SCRAP_DUMP_FOLDER } from '@/constants/scrap.constants';
+import { getScrapedPageFiles, readScrapedFileContent, ScrapedPageData } from "@/services/scrapper.service";
+import { cleanTextContent } from '@/lib/embedding.helper';
+
+const limit = pLimit(3);
 
 const argsSchema = {
     options: {
@@ -13,36 +15,36 @@ const argsSchema = {
 const run = async () => {
     try {
         const { values } = parseArgs(argsSchema);
-        const { isValid, url: rootUrl, hostname } = getValidUrlDetails(values?.url);
+        const { isValid, hostname } = getValidUrlDetails(values?.url);
         if (!isValid) {
             console.error('Error: --url (-u) must be a valid http or https web address.');
             process.exit(1);
         }
 
-        console.log(`Starting ingestion for website: ${hostname}`);
-
-        const scrapDumpPath = path.join(process.cwd(), SCRAP_DUMP_FOLDER, hostname!);
-        const files: string[] = await fs.readdir(scrapDumpPath);
-        const jsonFiles = files.filter(file => file.endsWith('.json'));
-
+        const jsonFiles = await getScrapedPageFiles(hostname!);
         if (jsonFiles.length === 0) {
-            console.warn(`No scraped JSON files found in directory: ${scrapDumpPath}`);
+            console.warn(`No scraped JSON files found in directory: ${hostname}`);
             process.exit(0);
         }
 
+        console.log(`Starting ingestion for website: ${hostname}`);
+
+
         console.log(`Found ${jsonFiles.length} files to ingest. Processing...`);
 
-        for (const file of jsonFiles) {
-            const fullFilePath = path.join(scrapDumpPath, file);
-            const rawData = await fs.readFile(fullFilePath, 'utf-8');
-            const pageData = JSON.parse(rawData);
+        const pipelineTasks = jsonFiles.map((fileName) => {
+            return limit(async () => {
+                const pageData: ScrapedPageData | null = await readScrapedFileContent(fileName, hostname!);
+                if(!pageData) {
+                    return;
+                }
 
-            console.log(`[Processing] File: ${file} | URL: ${pageData.url} (${pageData.textContent?.length || 0} chars)`);
+                const cleanedPageContent = cleanTextContent(pageData.textContent);
+                console.log(`[Processing] File: ${fileName} | Chars: ${pageData.textContent.length} | AfterCleanupChars: ${cleanedPageContent.length}`);
+            });
+        });
 
-            // NEXT STEP GOES HERE:
-            // Pass pageData.textContent into your LangChain text splitter!
-        }
-
+        await Promise.all(pipelineTasks);
 
         console.log('Ingestion process completed successfully.');
         process.exit(0);
