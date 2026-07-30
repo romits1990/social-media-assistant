@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "command:migrate": "tsx scripts/command-migrate.ts",
+    "command:migrate": "tsx --env-file=.env.local scripts/command-migrate.ts",
     "command:crawl": "tsx scripts/command-crawl.ts",
-    "command:ingest": "tsx scripts/comand-ingest.ts"
+    "command:ingest": "tsx --env-file=.env.local scripts/command-ingest.ts"
   },
   "dependencies": {
     "@langchain/ollama": "^1.3.0",

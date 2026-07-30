@@ -23,7 +23,7 @@ const splitter = new RecursiveCharacterTextSplitter({
 });
 
 const embeddingsPipeline = new OllamaEmbeddings({
-  model: "nomic-embed-text",
+  model: "nomic-embed-text:v1.5",
   baseUrl: "http://localhost:11434", 
 });
 
@@ -84,8 +84,6 @@ export const processAndEmbedPageContent = async (pageData: ScrapedPageData): Pro
     }
   }));
 
-  console.log(repositoryPayload)
-
   // 5. Delegate persistence to the Functional Repository
-  // await upsertWebsiteChunks(repositoryPayload);
+  await upsertWebsiteChunks(repositoryPayload);
 };

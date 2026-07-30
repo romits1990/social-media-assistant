@@ -7,20 +7,23 @@ import { closeDbConnection } from '@/lib/db';
 
 const argsSchema = {
     options: {
-        url: { type: 'string', short: 'u' }
+        url: { type: 'string', short: 'u' },
+        limit: { type: 'string', short: 'l' }
     }
 } as const;
 
 const run = async () => {
     try {
         const { values } = parseArgs(argsSchema);
+        const fileLimit = values?.limit ? parseInt(values.limit, 100) : undefined;
+
         const { isValid, hostname } = getValidUrlDetails(values?.url);
         if (!isValid) {
             console.error('Error: --url (-u) must be a valid http or https web address.');
             process.exit(1);
         }
 
-        const jsonFiles = await getScrapedPageFiles(hostname!);
+        const jsonFiles = await getScrapedPageFiles(hostname!, { limit: fileLimit });
         if (jsonFiles.length === 0) {
             console.warn(`No scraped JSON files found in directory: ${hostname}`);
             process.exit(0);

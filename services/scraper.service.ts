@@ -14,6 +14,10 @@ export type ScrapedPageData = {
   images: string[]
 };
 
+export type GetFilesOptions = {
+  limit?: number
+};
+
 /**
  * Extracts, scores, and prioritizes image URLs from a web page document.
  * Places the absolute best candidate for an Instagram post at index 0.
@@ -41,7 +45,7 @@ const extractAndRankImages = ($dom: cheerio.CheerioAPI, baseUrl: string): string
   $dom('img').each((_, el) => {
 
     // WORDPRESS FIX: Look for actual image paths inside lazy-load variables first
-    const src = 
+    const src =
       $dom(el).attr('data-src')?.trim() ||       // Common JS Lazy Loaders
       $dom(el).attr('data-lazy-src')?.trim() ||  // WP Rocket / Optimization plugins
       $dom(el).attr('data-original')?.trim() ||  // Older lazy loaders
@@ -89,9 +93,10 @@ const extractAndRankImages = ($dom: cheerio.CheerioAPI, baseUrl: string): string
       if (explicitWidth > 0 && explicitWidth < 80) currentScore -= 50;
 
       uniqueCandidates.set(absoluteUrl, currentScore);
-    } catch(err) { 
+    } catch (err) {
       console.log(err);
-      /* Suppress runtime URL build conversion errors */ }
+      /* Suppress runtime URL build conversion errors */
+}
   });
 
   // Compile, filter out complete layout trash, and sort descending by score
@@ -172,11 +177,23 @@ export const writeScrapedContentToFile = async (content: ScrapedPageData, url: s
   );
 };
 
-export const getScrapedPageFiles = async (domainFolderName: string): Promise<string[]> => {
+export const getScrapedPageFiles = async (
+  domainFolderName: string,
+  options?: GetFilesOptions
+): Promise<string[]> => {
   try {
     const scrapDumpPath = path.join(process.cwd(), SCRAP_DUMP_FOLDER, domainFolderName);
     const files: string[] = await fs.readdir(scrapDumpPath);
-    return files.filter(fileName => fileName.endsWith('.json'));
+
+    // 1. Filter for JSON files first
+    const jsonFiles = files.filter(fileName => fileName.endsWith('.json'));
+
+    // 2. Apply limit if provided and valid (> 0)
+    if (options?.limit && options.limit > 0) {
+      return jsonFiles.slice(0, options.limit);
+    }
+
+    return jsonFiles;
   }
   catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
