@@ -1,6 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { getValidUrlDetails, ValidUrlDetails } from "@/lib/url.helper";
+import { getValidUrlDetails, ValidUrlDetails } from "@/lib/utils/url.helper";
 
 interface ParseResult {
   sitemaps: string[]; // Nested sitemap indexes found

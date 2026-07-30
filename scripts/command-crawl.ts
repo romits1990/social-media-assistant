@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
-import { getValidUrlDetails } from "@/lib/url.helper";
-import { extractPageUrls } from "@/services/crawler.service";
-import { scrapePage, createScrapDumpDirectory, deleteScrapDumpDirectory, writeScrapedContentToFile } from '@/services/scrapper.service';
+import { getValidUrlDetails } from "@/lib/utils/url.helper";
+import { processSitemapUrl } from "@/services/sitemap-parser.service";
+import { scrapePage, createScrapDumpDirectory, deleteScrapDumpDirectory, writeScrapedContentToFile } from '@/services/scraper.service';
 
 const argsSchema = {
     options: {
@@ -20,7 +20,7 @@ const run = async () => {
         
         console.log(`Starting crawl for sitemap: ${rootUrl}`);
 
-        const pageUrls = await extractPageUrls(rootUrl!);
+        const pageUrls: string[] = (await processSitemapUrl(rootUrl!)).filter(url => getValidUrlDetails(url).isValid);
         if(pageUrls.length == 0) {
             console.error('Error: Page urls are empty.');
             process.exit(1);

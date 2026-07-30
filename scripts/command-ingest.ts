@@ -1,10 +1,9 @@
 import { parseArgs } from 'node:util';
-import pLimit from 'p-limit';
-import { getValidUrlDetails } from "@/lib/url.helper";
-import { getScrapedPageFiles, readScrapedFileContent, ScrapedPageData } from "@/services/scrapper.service";
-import { cleanTextContent } from '@/lib/embedding.helper';
-
-const limit = pLimit(3);
+import { getValidUrlDetails } from "@/lib/utils/url.helper";
+import { getScrapedPageFiles, readScrapedFileContent, ScrapedPageData } from "@/services/scraper.service";
+import { processAndEmbedPageContent } from '@/services/embedding.service';
+import { executeConcurrentPipeline } from '@/lib/utils/pipeline.helper';
+import { closeDbConnection } from '@/lib/db';
 
 const argsSchema = {
     options: {
@@ -32,26 +31,35 @@ const run = async () => {
 
         console.log(`Found ${jsonFiles.length} files to ingest. Processing...`);
 
-        const pipelineTasks = jsonFiles.map((fileName) => {
-            return limit(async () => {
+        const ingestionTask = async (fileName: string) => {
+            try {
                 const pageData: ScrapedPageData | null = await readScrapedFileContent(fileName, hostname!);
-                if(!pageData) {
+                if (!pageData) {
                     return;
                 }
 
-                const cleanedPageContent = cleanTextContent(pageData.textContent);
-                console.log(`[Processing] File: ${fileName} | Chars: ${pageData.textContent.length} | AfterCleanupChars: ${cleanedPageContent.length}`);
-            });
+                await processAndEmbedPageContent(pageData);
+            } catch (taskError) {
+                const msg = taskError instanceof Error ? taskError.message : 'Unknown task error';
+                console.error(`❌ [Task Failed] Error processing file "${fileName}": ${msg}`);
+            }
+        };
+
+        const pipelineTasks = jsonFiles.map((fileName) => {
+            return async () => ingestionTask(fileName);
         });
 
-        await Promise.all(pipelineTasks);
+        await executeConcurrentPipeline(pipelineTasks, { concurrency: 3 });
 
         console.log('Ingestion process completed successfully.');
-        process.exit(0);
+        process.exitCode = 0;
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`Execution failed: ${errorMessage}`);
-        process.exit(1);
+        process.exitCode = 1;
+    } finally {
+        await closeDbConnection();
+        process.exit(process.exitCode || 0);
     }
 };
 
