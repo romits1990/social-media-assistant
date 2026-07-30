@@ -10,7 +10,6 @@ async function run() {
   try {
     console.log('🔄 [Migrations] Checking database migration state...');
 
-    // 1. Ensure tracking table exists (Laravel equivalent of 'migrations' table)
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         id SERIAL PRIMARY KEY,

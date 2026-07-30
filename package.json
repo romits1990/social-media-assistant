@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "command:crawl": "tsx scripts/command:crawl.ts",
+    "command:migrate": "tsx scripts/command-migrate.ts",
+    "command:crawl": "tsx scripts/command-crawl.ts",
     "command:ingest": "tsx scripts/comand-ingest.ts"
   },
   "dependencies": {
