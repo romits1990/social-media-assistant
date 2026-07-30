@@ -14,6 +14,20 @@ export type VectorChunkEntity = {
     };
 };
 
+export type VectorSearchResult = {
+    id: string;
+    url: string;
+    title: string;
+    content: string;
+    metadata: {
+        description?: string;
+        h1?: string[];
+        heroImage?: string | null;
+        allImages?: string[];
+    };
+    similarity: number;
+};
+
 /**
  * Idempotently saves a batch of vector chunks for a specific URL.
  * Clears existing chunks for the target URL before performing a bulk insert.
@@ -73,25 +87,37 @@ export const upsertWebsiteChunks = async (chunks: VectorChunkEntity[]): Promise<
 };
 
 /**
- * Similarity search helper (to be used by downstream Search Agents)
+ * Executes a vector similarity search against PostgreSQL using pgvector HNSW index.
+ * * @param queryVector 768-dimension float array from Ollama
+ * @param limit Maximum chunks to retrieve (Default: 5)
+ * @param similarityThreshold Minimum similarity score between 0.0 and 1.0 (Default: 0.65)
  */
 export const findSimilarChunks = async (
     queryVector: number[],
     limit = 5,
-    similarityThreshold = 0.85
-) => {
+    similarityThreshold = 0.65
+): Promise<VectorSearchResult[]> => {
+    // Convert similarity threshold to max distance threshold: Distance = 1 - Similarity
+    const maxDistance = 1 - similarityThreshold;
+
     const query = `
-    SELECT id, url, title, content, metadata, 1 - (embedding <=> $1::vector) as similarity
+    SELECT 
+      id, 
+      url, 
+      title, 
+      content, 
+      metadata, 
+      (1 - (embedding <=> $1::vector)) AS similarity
     FROM website_chunks
-    WHERE 1 - (embedding <=> $1::vector) >= $2
-    ORDER BY similarity DESC
-    LIMIT $3
+    WHERE (embedding <=> $1::vector) <= $2
+    ORDER BY embedding <=> $1::vector ASC
+    LIMIT $3;
   `;
 
-    const { rows } = await db.query(query, [
+    const { rows } = await db.query<VectorSearchResult>(query, [
         JSON.stringify(queryVector),
-        similarityThreshold,
-        limit
+        maxDistance,
+        limit,
     ]);
 
     return rows;
