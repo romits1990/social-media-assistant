@@ -1,0 +1,1 @@
+export const OLLAMA_WRITER_MODEL = process.env.OLLAMA_WRITER_MODEL || "llama3";

@@ -19,6 +19,7 @@ export type VectorSearchResult = {
     url: string;
     title: string;
     content: string;
+    chunkIndex: number;
     metadata: {
         description?: string;
         h1?: string[];
@@ -106,7 +107,8 @@ export const findSimilarChunks = async (
       url, 
       title, 
       content, 
-      metadata, 
+      metadata,
+      chunk_index AS "chunkIndex"
       (1 - (embedding <=> $1::vector)) AS similarity
     FROM website_chunks
     WHERE (embedding <=> $1::vector) <= $2
