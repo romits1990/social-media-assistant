@@ -1,7 +1,7 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { OllamaEmbeddings } from "@langchain/ollama";
 import he from "he";
-import { ScrapedPageData } from "./scraper.service";
+import { ScrapedPageData } from "@/services/scraper.service";
 import { upsertWebsiteChunks, VectorChunkEntity } from "@/repositories/vector.repository";
 import { CHUNK_OVERLAP, CHUNK_SIZE, EMBEDDING_MODEL_NAME, EXPECTED_VECTOR_DIMENSION } from "@/constants/vector.constants";
 

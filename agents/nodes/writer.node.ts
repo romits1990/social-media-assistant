@@ -22,7 +22,7 @@ You are an expert Social Media Content Strategist. Your task is to generate an e
 
 ### PLATFORM FORMATTING RULES:
 - **LinkedIn**: Professional tone, insightful hooks, structured bullet points, clear Call to Action (CTA), 3-5 relevant hashtags.
-- **Twitter**: Concise, punchy, under 280 characters, highly engaging, 1-2 hashtags.
+- **Twitter**: Concise, punchy, strictly under 280 characters total, highly engaging, 1-2 hashtags.
 - **Instagram**: Visual narrative style, engaging opening hook, line breaks, emojis, 5-10 hashtags at the bottom.
 - **Facebook**: Conversational, community-focused, questions to drive engagement.
 
@@ -42,7 +42,6 @@ const extractJsonPayload = (text: string): Record<string, any> => {
   try {
     return JSON.parse(text);
   } catch {
-    // Fallback: extract substring between first '{' and last '}'
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error("Could not find valid JSON boundaries in model output.");
@@ -66,11 +65,26 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
     const response = await writerLlm.invoke(formattedPrompt);
     const rawContent = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
 
-    // Extract and parse JSON safely
+    // 1. Safe JSON extraction
     const parsedDraft = extractJsonPayload(rawContent);
 
-    // 1. Direct consumption of selectedHeroImage from retriever node
-    // 2. Fallback check on retrievedChunks metadata if state.selectedHeroImage was undefined
+    // 2. Validate required payload attributes
+    if (!parsedDraft.content || typeof parsedDraft.content !== "string") {
+      throw new Error("Model generated JSON without a valid string 'content' field.");
+    }
+
+    // 3. Normalize hashtags (handles array vs. string output, ensures '#' prefix)
+    const rawTags = Array.isArray(parsedDraft.hashtags)
+      ? parsedDraft.hashtags
+      : typeof parsedDraft.hashtags === "string"
+        ? parsedDraft.hashtags.split(",").map((t) => t.trim())
+        : [];
+
+    const normalizedHashtags = rawTags
+      .filter((t) => typeof t === "string" && t.length > 0)
+      .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`));
+
+    // 4. Resolve Hero Image precedence
     const heroImage =
       state.selectedHeroImage ??
       state.retrievedChunks.find((c) => c.metadata?.heroImage)?.metadata?.heroImage ??
@@ -81,14 +95,14 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
     return {
       draftPost: {
         title: parsedDraft.title || state.targetTopic,
-        content: parsedDraft.content,
-        hashtags: parsedDraft.hashtags || [],
+        content: parsedDraft.content.trim(),
+        hashtags: normalizedHashtags,
         suggestedHeroImage: heroImage,
       },
-      status: "WRITING",
+      status: "COMPLETED", // Transition state cleanly for Supervisor Node
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to parse generated LLM draft";
+    const msg = error instanceof Error ? error.message : "Failed to generate LLM draft";
     console.error(`❌ [Writer Agent Error]: ${msg}`);
     return {
       status: "FAILED",

@@ -1,7 +1,7 @@
 import { OllamaEmbeddings } from "@langchain/ollama";
 import { findSimilarChunks } from "@/repositories/vector.repository";
 import { EMBEDDING_MODEL_NAME } from "@/constants/vector.constants";
-import { AgentState } from "../agent.state";
+import { AgentState } from "@/agents/agent.state";
 
 const embeddingsPipeline = new OllamaEmbeddings({
   model: EMBEDDING_MODEL_NAME,
@@ -21,7 +21,12 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
 
     if (rawChunks.length === 0) {
       console.warn(`⚠️ [Retriever Agent] No relevant context found for: "${state.targetTopic}"`);
-      return { status: "WRITING", contextSummary: "No relevant content found." };
+      return { 
+        retrievedChunks: [],
+        selectedHeroImage: null,
+        contextSummary: "No relevant internal content found.", 
+        status: "WRITING" 
+      };
     }
 
     // 2. Identify the single best-matching URL (Index 0 is the highest vector match)
@@ -32,19 +37,37 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
       .filter((c) => c.url === targetUrl)
       .sort((a, b) => a.chunkIndex - b.chunkIndex); // Sort in natural reading order
 
-    // 4. Extract page metadata from the top chunk
-    const primaryTitle = pageChunks[0].title;
-    const primaryHeroImage = pageChunks[0].metadata?.heroImage || null;
+    // 4. Extract page metadata safely from the top chunk
+    const primaryChunk = pageChunks[0];
+    const primaryTitle = primaryChunk.title || "Untitled Page";
+    const primaryDescription = primaryChunk.metadata?.description || "";
+    const primaryH1 = Array.isArray(primaryChunk.metadata?.h1) 
+      ? primaryChunk.metadata.h1.join(", ") 
+      : "";
+    const primaryHeroImage = primaryChunk.metadata?.heroImage || null;
 
-    // 5. Build context summary exclusively for this single page
-    const contextSummary = pageChunks.map((c) => c.content).join("\n\n");
+    // 5. Build full body content text from sorted chunks
+    const chunksContent = pageChunks.map((c) => c.content).join("\n\n");
 
-    console.log(`✅ [Retriever Agent] Successfully retrieved ${pageChunks.length} contextual chunks.`);
+    // 6. Construct framed context summary for the Writer LLM (clean whitespace)
+    const contextOverviewHeader = [
+      `[SOURCE PAGE OVERVIEW]`,
+      `Source URL: ${targetUrl}`,
+      `Page Title: ${primaryTitle}`,
+      primaryDescription ? `Meta Description: ${primaryDescription}` : null,
+      primaryH1 ? `Main Headings: ${primaryH1}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const contextSummary = `${contextOverviewHeader}\n\n[DETAILED CONTENT CHUNKS]\n${chunksContent}`;
+
+    console.log(`✅ [Retriever Agent] Successfully retrieved ${pageChunks.length} contextual chunks for ${targetUrl}`);
 
     return {
       retrievedChunks: pageChunks,
       selectedHeroImage: primaryHeroImage,
-      contextSummary: `[Source: ${primaryTitle} (${targetUrl})]\n\n${contextSummary}`,
+      contextSummary,
       status: "WRITING",
     };
   } catch (error) {

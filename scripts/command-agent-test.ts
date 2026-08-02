@@ -1,12 +1,12 @@
 import { socialAssistantGraph } from "@/agents/social.workflow";
 import { closeDbConnection } from "@/lib/db";
 
-const runTest = async () => {
+const run = async () => {
   try {
     console.log("🔥 Starting Multi-Agent Social Media Workflow Test...\n");
 
     const finalState = await socialAssistantGraph.invoke({
-      targetTopic: "Next.js App Router performance optimizations",
+      targetTopic: "Academy of fine arts",
       platform: "linkedin",
       autoPublishEnabled: false, // Set to true to test direct publishing
     });
@@ -31,4 +31,4 @@ const runTest = async () => {
   }
 };
 
-runTest();
+run();

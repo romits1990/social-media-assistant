@@ -9,7 +9,8 @@
     "lint": "eslint",
     "command:migrate": "tsx --env-file=.env.local scripts/command-migrate.ts",
     "command:crawl": "tsx scripts/command-crawl.ts",
-    "command:ingest": "tsx --env-file=.env.local scripts/command-ingest.ts"
+    "command:ingest": "tsx --env-file=.env.local scripts/command-ingest.ts",
+    "command:agent-test": "tsx --env-file=.env.local scripts/command-agent-test.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.3",

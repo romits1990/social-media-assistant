@@ -15,7 +15,7 @@ const argsSchema = {
 const run = async () => {
     try {
         const { values } = parseArgs(argsSchema);
-        const fileLimit = values?.limit ? parseInt(values.limit, 100) : undefined;
+        const fileLimit = values?.limit ? parseInt(values.limit, 10) : undefined;
 
         const { isValid, hostname } = getValidUrlDetails(values?.url);
         if (!isValid) {

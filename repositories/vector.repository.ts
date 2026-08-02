@@ -108,7 +108,7 @@ export const findSimilarChunks = async (
       title, 
       content, 
       metadata,
-      chunk_index AS "chunkIndex"
+      chunk_index AS "chunkIndex",
       (1 - (embedding <=> $1::vector)) AS similarity
     FROM website_chunks
     WHERE (embedding <=> $1::vector) <= $2
