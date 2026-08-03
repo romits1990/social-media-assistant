@@ -1,19 +1,42 @@
+// src/agents/social.workflow.ts
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { AgentStateAnnotation } from "@/agents/agent.state";
+import { AgentStateAnnotation, AgentState } from "@/agents/agent.state";
+import { deduplicatorNode } from "@/agents/nodes/deduplicator.node";
 import { retrieverNode } from "@/agents/nodes/retriever.node";
 import { writerNode } from "@/agents/nodes/writer.node";
 import { supervisorNode } from "@/agents/nodes/supervisor.node";
 
-// 2. Build and Compile Graph using Method Chaining
+/**
+ * Conditional router: Bypasses retriever and writer if deduplicator rejects topic.
+ */
+const routeAfterDeduplication = (state: AgentState): "retriever" | typeof END => {
+  if (state.status === "REJECTED_DUPLICATE" || state.status === "FAILED") {
+    return END;
+  }
+  return "retriever";
+};
+
+// Build StateGraph with Method Chaining
 export const socialAssistantGraph = new StateGraph(AgentStateAnnotation)
-  // Register Nodes (Chaining propagates node key generics)
+  // 1. Register Nodes
+  .addNode("deduplicator", deduplicatorNode)
   .addNode("retriever", retrieverNode)
   .addNode("writer", writerNode)
   .addNode("supervisor", supervisorNode)
-  // Define Execution Edges (Connect START -> retriever -> writer -> supervisor -> END)
-  .addEdge(START, "retriever")
+
+  // 2. Connect Entry Edge
+  .addEdge(START, "deduplicator")
+
+  // 3. Conditional Edge: Route based on deduplication status
+  .addConditionalEdges("deduplicator", routeAfterDeduplication, {
+    retriever: "retriever",
+    [END]: END,
+  })
+
+  // 4. Sequential Execution Edges
   .addEdge("retriever", "writer")
   .addEdge("writer", "supervisor")
   .addEdge("supervisor", END)
-  // Compile final graph executable
+
+  // 5. Compile final graph
   .compile();

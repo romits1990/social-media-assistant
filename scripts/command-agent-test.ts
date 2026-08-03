@@ -6,7 +6,7 @@ const run = async () => {
     console.log("🔥 Starting Multi-Agent Social Media Workflow Test...\n");
 
     const finalState = await socialAssistantGraph.invoke({
-      targetTopic: "Academy of fine arts",
+      targetTopic: "Fine Arts",
       platform: "linkedin",
       autoPublishEnabled: false, // Set to true to test direct publishing
     });

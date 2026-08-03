@@ -23,6 +23,7 @@ export type AgentStatus =
 export interface AgentState {
   // Inputs
   targetTopic: string;
+  topicEmbedding?: number[];
   platform: SocialPlatform;
   autoPublishEnabled: boolean;
 
@@ -47,6 +48,10 @@ export const AgentStateAnnotation = Annotation.Root({
   targetTopic: Annotation<string>({
     reducer: (x, y) => y ?? x,
     default: () => "",
+  }),
+  topicEmbedding: Annotation<number[] | undefined>({
+    reducer: (x, y) => y ?? x,
+    default: () => undefined,
   }),
   platform: Annotation<SocialPlatform>({
     reducer: (x, y) => y ?? x,
