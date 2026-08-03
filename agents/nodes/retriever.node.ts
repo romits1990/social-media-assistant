@@ -25,7 +25,7 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
         retrievedChunks: [],
         selectedHeroImage: null,
         contextSummary: "No relevant internal content found.", 
-        status: "WRITING" 
+        status: "FAILED" 
       };
     }
 

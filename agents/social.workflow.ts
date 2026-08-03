@@ -5,6 +5,7 @@ import { deduplicatorNode } from "@/agents/nodes/deduplicator.node";
 import { retrieverNode } from "@/agents/nodes/retriever.node";
 import { writerNode } from "@/agents/nodes/writer.node";
 import { supervisorNode } from "@/agents/nodes/supervisor.node";
+import { publisherNode } from "@/agents/nodes/publisher.node";
 
 /**
  * Conditional router: Bypasses retriever and writer if deduplicator rejects topic.
@@ -16,6 +17,13 @@ const routeAfterDeduplication = (state: AgentState): "retriever" | typeof END =>
   return "retriever";
 };
 
+const routeAfterSupervisor = (state: AgentState): "publisher" | typeof END => {
+  if (state.autoPublishEnabled && state.status !== "FAILED") {
+    return "publisher";
+  }
+  return END;
+};
+
 // Build StateGraph with Method Chaining
 export const socialAssistantGraph = new StateGraph(AgentStateAnnotation)
   // 1. Register Nodes
@@ -23,6 +31,7 @@ export const socialAssistantGraph = new StateGraph(AgentStateAnnotation)
   .addNode("retriever", retrieverNode)
   .addNode("writer", writerNode)
   .addNode("supervisor", supervisorNode)
+  .addNode("publisher", publisherNode)
 
   // 2. Connect Entry Edge
   .addEdge(START, "deduplicator")
@@ -36,7 +45,13 @@ export const socialAssistantGraph = new StateGraph(AgentStateAnnotation)
   // 4. Sequential Execution Edges
   .addEdge("retriever", "writer")
   .addEdge("writer", "supervisor")
-  .addEdge("supervisor", END)
+
+  // 5.  Conditional Edge: Route based on autoPublishEnabled status
+  .addConditionalEdges("supervisor", routeAfterSupervisor, {
+    publisher: "publisher",
+    [END]: END,
+  })
+  .addEdge("publisher", END)
 
   // 5. Compile final graph
   .compile();
