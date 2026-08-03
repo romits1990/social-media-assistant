@@ -7,7 +7,7 @@ const run = async () => {
 
     const finalState = await socialAssistantGraph.invoke({
       targetTopic: "Fine Arts",
-      platform: "linkedin",
+      platform: "facebook",
       autoPublishEnabled: false, // Set to true to test direct publishing
     });
 

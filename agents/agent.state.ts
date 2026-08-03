@@ -18,7 +18,8 @@ export type AgentStatus =
   | "AWAITING_APPROVAL"
   | "PUBLISHED"
   | "COMPLETED"
-  | "FAILED";
+  | "FAILED"
+  | "EMPTY_CHUNKS";
 
 export interface AgentState {
   // Inputs

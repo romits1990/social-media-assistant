@@ -17,6 +17,13 @@ const routeAfterDeduplication = (state: AgentState): "retriever" | typeof END =>
   return "retriever";
 };
 
+const routeAfterRetrieval = (state: AgentState): "writer" | typeof END => {
+  if (state.status === "EMPTY_CHUNKS" || state.status === "FAILED") {
+    return END;
+  }
+  return "writer";
+};
+
 const routeAfterSupervisor = (state: AgentState): "publisher" | typeof END => {
   if (state.autoPublishEnabled && state.status !== "FAILED") {
     return "publisher";
@@ -42,8 +49,11 @@ export const socialAssistantGraph = new StateGraph(AgentStateAnnotation)
     [END]: END,
   })
 
-  // 4. Sequential Execution Edges
-  .addEdge("retriever", "writer")
+  // 4. Conditional Edge: Route based on non empty query results
+  .addConditionalEdges("retriever", routeAfterRetrieval, {
+    writer: "writer",
+    [END]: END
+  })
   .addEdge("writer", "supervisor")
 
   // 5.  Conditional Edge: Route based on autoPublishEnabled status

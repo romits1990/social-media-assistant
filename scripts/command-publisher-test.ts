@@ -1,5 +1,5 @@
 import { socialAssistantGraph } from "@/agents/social.workflow";
-import { db, closeDbConnection } from "@/lib/db";
+import { closeDbConnection } from "@/lib/db";
 
 const run = async () => {
   try {
@@ -15,7 +15,7 @@ const run = async () => {
 
     const result2 = await socialAssistantGraph.invoke({
       targetTopic: topic2,
-      platform: "linkedin",
+      platform: "instagram",
       autoPublishEnabled: true,
     });
 
