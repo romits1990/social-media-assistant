@@ -123,8 +123,8 @@ export const scrapePage = async (url: string): Promise<ScrapedPageData | null> =
     const prioritizedImages = extractAndRankImages($dom, url);
 
     // 2. Clear out heavy layout containers that pollute clean core body text text strings
-    $dom('script, style, noscript, iframe, svg, nav, footer, header, form, aside').remove();
-
+    $dom('script, style, nav, header, footer, noscript, iframe, .sidebar, .menu, .footer, .header').remove();
+    
     const title = $dom('title').text().trim() || '';
     const description = $dom('meta[name="description"]').attr('content')?.trim() || '';
 

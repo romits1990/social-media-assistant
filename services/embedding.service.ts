@@ -69,7 +69,9 @@ export const processAndEmbedPageContent = async (pageData: ScrapedPageData): Pro
       [{ url: pageData.url, title: pageData.title }]
     );
 
-    const textStringsToEmbed = documents.map(doc => doc.pageContent);
+    const textStringsToEmbed = documents.map((doc) => 
+      `Page Title: ${pageData.title}\n${doc.pageContent}`
+    );
     if (textStringsToEmbed.length === 0) return;
 
     // 2. Fetch embeddings using batching to safeguard local Ollama instance
