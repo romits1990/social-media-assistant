@@ -2,7 +2,7 @@ import { AgentState } from "@/agents/agent.state";
 import { saveSocialPost } from "@/repositories/post.repository";
 
 /**
- * Node 3: Determines approval routing and persists draft post to Neon PostgreSQL.
+ * Node 4: Determines approval routing and persists draft post to Neon PostgreSQL.
  */
 export const supervisorNode = async (state: AgentState): Promise<Partial<AgentState>> => {
   if (state.status === "FAILED" || !state.draftPost) {
@@ -25,6 +25,7 @@ export const supervisorNode = async (state: AgentState): Promise<Partial<AgentSt
     // Persist to social_posts table
     const persistedPostId = await saveSocialPost({
       topic: state.targetTopic,
+      sourceUrl: state.retrievedChunks[0].url,
       topicEmbedding,
       platform: state.platform,
       title: state.draftPost.title,

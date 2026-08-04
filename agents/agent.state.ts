@@ -28,6 +28,11 @@ export interface AgentState {
   platform: SocialPlatform;
   autoPublishEnabled: boolean;
 
+  // Retry Control Flags
+  retryCount: number;         // Track current retry attempt (0, 1, 2...)
+  maxRetries: number;         // Max allowed loops (e.g., 3)
+  attemptedTopics: string[];  // Prevent retrying topics tried in this run
+
   // Intermediate Agent Outputs
   retrievedChunks: VectorSearchResult[];
   isDuplicateTopic: boolean;
@@ -61,6 +66,18 @@ export const AgentStateAnnotation = Annotation.Root({
   autoPublishEnabled: Annotation<boolean>({
     reducer: (x, y) => y ?? x,
     default: () => false,
+  }),
+  retryCount: Annotation<number>({
+    reducer: (x, y) => y ?? x,
+    default: () => 0,
+  }),
+  maxRetries: Annotation<number>({
+    reducer: (x, y) => y ?? x,
+    default: () => 3,
+  }),
+  attemptedTopics: Annotation<string[]>({
+    reducer: (x, y) => (y ? [...x, ...y] : x),
+    default: () => [],
   }),
   retrievedChunks: Annotation<AgentState["retrievedChunks"]>({
     reducer: (x, y) => y ?? x,

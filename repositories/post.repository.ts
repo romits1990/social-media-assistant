@@ -5,6 +5,7 @@ import { SocialPlatform } from "@/agents/agent.state";
 export type SocialPostEntity = {
   id?: string;
   topic: string;
+  sourceUrl: string;
   topicEmbedding: number[];
   platform: SocialPlatform;
   title: string;
@@ -71,9 +72,10 @@ export const saveSocialPost = async (
       content, 
       hashtags, 
       hero_image, 
-      status
+      status,
+      source_url
     )
-    VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8)
+    VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9)
     RETURNING id;
   `;
 
@@ -86,6 +88,7 @@ export const saveSocialPost = async (
     post.hashtags,
     post.heroImage,
     post.status,
+    post.sourceUrl
   ];
 
   const { rows } = await db.query(query, values);

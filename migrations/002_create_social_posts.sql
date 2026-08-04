@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS social_posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     topic TEXT NOT NULL,
+    source_url TEXT NOT NULL,
     topic_embedding vector(768) NOT NULL,
     platform VARCHAR(50) NOT NULL,
     title TEXT NOT NULL,

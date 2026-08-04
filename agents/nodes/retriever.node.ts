@@ -33,7 +33,7 @@ const getHighestRankedTargetUrl = (rawChunks: VectorSearchResult[]) => {
 };
 
 /**
- * Node 1: Fetches context chunks from Postgres pgvector using cosine distance.
+ * Node 2: Fetches context chunks from Postgres pgvector using cosine distance.
  */
 export const retrieverNode = async (state: AgentState): Promise<Partial<AgentState>> => {
   try {

@@ -9,7 +9,7 @@ const embeddingsPipeline = new OllamaEmbeddings({
 });
 
 /**
- * Node 0 (Deduplicator): Checks if target topic was recently posted.
+ * Node 1 (Deduplicator): Checks if target topic was recently posted.
  * Rejects workflow execution early if similarity > 0.85.
  */
 export const deduplicatorNode = async (state: AgentState): Promise<Partial<AgentState>> => {

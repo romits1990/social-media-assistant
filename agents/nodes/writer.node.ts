@@ -52,7 +52,7 @@ const extractJsonPayload = (text: string): Record<string, any> => {
 
 
 /**
- * Node 2: Create the actual post, draft it for publishing
+ * Node 3: Create the actual post, draft it for publishing
  **/
 export const writerNode = async (state: AgentState): Promise<Partial<AgentState>> => {
   if (state.status === "FAILED") return {};

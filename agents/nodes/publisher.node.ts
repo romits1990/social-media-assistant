@@ -2,7 +2,7 @@ import { AgentState } from "@/agents/agent.state";
 import { getPublisherForPlatform } from "@/services/publishers/publisher.factory";
 
 /**
- * Node 4: Invokes external social platform APIs for auto-publishing.
+ * Node 5: Invokes external social platform APIs for auto-publishing.
  */
 export const publisherNode = async (state: AgentState): Promise<Partial<AgentState>> => {
   if (!state.draftPost || state.status === "FAILED") return {};
