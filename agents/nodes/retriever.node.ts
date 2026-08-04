@@ -21,11 +21,11 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
 
     if (rawChunks.length === 0) {
       console.warn(`⚠️ [Retriever Agent] No relevant context found for: "${state.targetTopic}"`);
-      return { 
+      return {
         retrievedChunks: [],
         selectedHeroImage: null,
-        contextSummary: "No relevant internal content found.", 
-        status: "EMPTY_CHUNKS" 
+        contextSummary: "No relevant internal content found.",
+        status: "EMPTY_CHUNKS"
       };
     }
 
@@ -41,10 +41,17 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
     const primaryChunk = pageChunks[0];
     const primaryTitle = primaryChunk.title || "Untitled Page";
     const primaryDescription = primaryChunk.metadata?.description || "";
-    const primaryH1 = Array.isArray(primaryChunk.metadata?.h1) 
-      ? primaryChunk.metadata.h1.join(", ") 
+    const primaryH1 = Array.isArray(primaryChunk.metadata?.h1)
+      ? primaryChunk.metadata.h1.join(", ")
       : "";
-    const primaryHeroImage = primaryChunk.metadata?.heroImage || "https://as2.ftcdn.net/v2/jpg/05/68/13/53/1000_F_568135328_G1tX2S5FZtYQxwueJMA1CFOhCxN11Ytc.jpg";
+    const primaryHeroImage = primaryChunk.metadata?.heroImage;
+
+    if (state.platform === "instagram" && primaryHeroImage === null) {
+      console.warn(`⚠️ [Retriever Agent] Stopping post draft because Hero image is missing for platform instagram`);
+      return {
+        status: "FAILED"
+      };
+    }
 
     // 5. Build full body content text from sorted chunks
     const chunksContent = pageChunks.map((c) => c.content).join("\n\n");
