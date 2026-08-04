@@ -44,7 +44,7 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
     const primaryH1 = Array.isArray(primaryChunk.metadata?.h1) 
       ? primaryChunk.metadata.h1.join(", ") 
       : "";
-    const primaryHeroImage = primaryChunk.metadata?.heroImage || null;
+    const primaryHeroImage = primaryChunk.metadata?.heroImage || "https://as2.ftcdn.net/v2/jpg/05/68/13/53/1000_F_568135328_G1tX2S5FZtYQxwueJMA1CFOhCxN11Ytc.jpg";
 
     // 5. Build full body content text from sorted chunks
     const chunksContent = pageChunks.map((c) => c.content).join("\n\n");

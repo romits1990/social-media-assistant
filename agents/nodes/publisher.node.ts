@@ -11,9 +11,6 @@ export const publisherNode = async (state: AgentState): Promise<Partial<AgentSta
     console.log(`📢 [Publisher Agent] Auto-publishing post to platform: ${state.platform.toUpperCase()}...`);
 
     const publisher = getPublisherForPlatform(state.platform);
-    if(!publisher) {
-      throw new Error(`Failed to publish to ${state.platform}: Publisher not found`);
-    }
     
     const result = await publisher.publish({
       title: state.draftPost.title,
