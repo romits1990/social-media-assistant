@@ -39,6 +39,7 @@ export const supervisorNode = async (state: AgentState): Promise<Partial<AgentSt
 
     return {
       status: targetStatus,
+      persistedPostId
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to persist post to database";

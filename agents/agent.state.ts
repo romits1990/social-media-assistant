@@ -39,8 +39,9 @@ export interface AgentState {
   contextSummary: string;
   selectedHeroImage: string | null;
 
-  // Draft Outputs
+  // Draft & Database Outputs
   draftPost: DraftPost | null;
+  persistedPostId?: string | null;
 
   // Workflow Control Flags
   status: AgentStatus;
@@ -98,6 +99,10 @@ export const AgentStateAnnotation = Annotation.Root({
   draftPost: Annotation<AgentState["draftPost"]>({
     reducer: (x, y) => y ?? x,
     default: () => null,
+  }),
+  persistedPostId: Annotation<string | null | undefined>({
+    reducer: (x, y) => y ?? x,
+    default: () => null 
   }),
   status: Annotation<AgentState["status"]>({
     reducer: (x, y) => y ?? x,

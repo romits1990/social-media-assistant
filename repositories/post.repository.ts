@@ -1,18 +1,25 @@
-// src/repositories/post.repository.ts
 import { db } from "@/lib/db";
 import { SocialPlatform } from "@/agents/agent.state";
+
+export type SocialPostStatus = 
+  | "AWAITING_APPROVAL" 
+  | "PUBLISHED" 
+  | "FAILED" 
+  | "REJECTED_DUPLICATE";
 
 export type SocialPostEntity = {
   id?: string;
   topic: string;
-  sourceUrl: string;
-  topicEmbedding: number[];
+  sourceUrl?: string | null;
+  topicEmbedding?: number[];
   platform: SocialPlatform;
   title: string;
   content: string;
   hashtags: string[];
-  heroImage: string | null;
-  status: "AWAITING_APPROVAL" | "PUBLISHED" | "REJECTED_DUPLICATE";
+  heroImage?: string | null;
+  status: SocialPostStatus;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 };
 
 export type DeduplicationResult = {
@@ -58,7 +65,7 @@ export const checkTopicDeduplication = async (
 };
 
 /**
- * Persists a generated draft post 
+ * Persists a generated draft post to Neon PostgreSQL.
  */
 export const saveSocialPost = async (
   post: SocialPostEntity
@@ -81,16 +88,105 @@ export const saveSocialPost = async (
 
   const values = [
     post.topic,
-    JSON.stringify(post.topicEmbedding),
+    JSON.stringify(post.topicEmbedding || []),
     post.platform,
     post.title,
     post.content,
-    post.hashtags,
-    post.heroImage,
+    post.hashtags || [],
+    post.heroImage ?? null,
     post.status,
-    post.sourceUrl
+    post.sourceUrl ?? null,
   ];
 
   const { rows } = await db.query(query, values);
   return rows[0].id;
+};
+
+/**
+ * Fetches all posts filtered by optional status for Next.js Admin Dashboard
+ */
+export const getSocialPosts = async (
+  statusFilter?: SocialPostStatus | "ALL"
+): Promise<SocialPostEntity[]> => {
+  let query = `
+    SELECT 
+      id, 
+      topic, 
+      platform, 
+      title, 
+      content, 
+      hashtags, 
+      hero_image AS "heroImage", 
+      source_url AS "sourceUrl", 
+      status, 
+      created_at AS "createdAt", 
+      updated_at AS "updatedAt"
+    FROM social_posts
+  `;
+  const params: any[] = [];
+
+  if (statusFilter && statusFilter !== "ALL") {
+    query += ` WHERE status = $1`;
+    params.push(statusFilter);
+  }
+
+  query += ` ORDER BY created_at DESC LIMIT 50;`;
+
+  const { rows } = await db.query(query, params);
+  return rows;
+};
+
+/**
+ * Fetches a single social post by UUID
+ */
+export const getSocialPostById = async (
+  postId: string
+): Promise<SocialPostEntity | null> => {
+  const query = `
+    SELECT 
+      id, 
+      topic, 
+      platform, 
+      title, 
+      content, 
+      hashtags, 
+      hero_image AS "heroImage", 
+      source_url AS "sourceUrl", 
+      status, 
+      created_at AS "createdAt", 
+      updated_at AS "updatedAt"
+    FROM social_posts 
+    WHERE id = $1;
+  `;
+
+  const { rows } = await db.query(query, [postId]);
+  return rows.length > 0 ? rows[0] : null;
+};
+
+/**
+ * Updates post status and optionally content/hashtags if edited prior to publishing
+ */
+export const updatePostStatusAndContent = async (
+  postId: string,
+  status: string,
+  content?: string,
+  hashtags?: string[]
+): Promise<void> => {
+  let query = `
+    UPDATE social_posts 
+    SET status = $1, updated_at = CURRENT_TIMESTAMP
+  `;
+  const params: any[] = [status, postId];
+
+  if (content !== undefined && hashtags !== undefined) {
+    query = `
+      UPDATE social_posts 
+      SET status = $1, content = $3, hashtags = $4, updated_at = CURRENT_TIMESTAMP
+    `;
+    params.push(content, hashtags);
+  }
+
+  query += ` WHERE id = $2;`;
+
+  await db.query(query, params);
 };

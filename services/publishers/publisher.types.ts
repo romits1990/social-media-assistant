@@ -4,7 +4,7 @@ export type PublishPayload = {
   title: string;
   content: string;
   hashtags: string[];
-  heroImage: string | null;
+  heroImage: string | null | undefined;
 };
 
 export type PublishResult = {

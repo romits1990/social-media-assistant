@@ -10,7 +10,7 @@ const run = async () => {
     // -----------------------------------------------------------------
     // TEST 1: Auto-Publish Mode (autoPublishEnabled = true)
     // -----------------------------------------------------------------
-    const topic2 = `day trip to little europe`;
+    const topic2 = `mallick bazaar flower market trip`;
     console.log(`\n▶️ TEST 2: Executing Path B (Auto-Publish ENABLED) for topic: "${topic2}"...`);
 
     const result2 = await socialAssistantGraph.invoke({
