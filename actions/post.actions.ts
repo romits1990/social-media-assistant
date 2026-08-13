@@ -88,3 +88,19 @@ export async function publishOrRetryPostAction(postId: string, updatedContent?: 
     return { success: false, error: msg };
   }
 }
+
+/**
+ * Server Action: Fetches a single post draft by ID for inspection/preview
+ */
+export async function getPostPreviewAction(postId: string) {
+  try {
+    const post = await getSocialPostById(postId);
+    if (!post) {
+      return { success: false, error: "Post record not found." };
+    }
+    return { success: true, post };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Failed to fetch post preview.";
+    return { success: false, error: msg };
+  }
+}
