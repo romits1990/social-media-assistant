@@ -20,6 +20,11 @@ You are an expert Social Media Content Strategist. Your task is to generate an e
 ### USER TOPIC / GOAL:
 {targetTopic}
 
+### CRITICAL FORMATTING & PLAIN-TEXT RULES:
+- Output ONLY pure plain text formatted with standard line breaks (double newlines) and emojis.
+- **STRICTLY FORBIDDEN**: DO NOT use any HTML tags like <p>, <br>, <b>, <i>, <div>, or <a> tags under any circumstances.
+- Social media platform APIs will reject or corrupt raw HTML tags.
+
 ### PLATFORM FORMATTING RULES:
 - **LinkedIn**: Professional tone, insightful hooks, structured bullet points, clear Call to Action (CTA), 3-5 relevant hashtags.
 - **Twitter**: Concise, punchy, strictly under 280 characters total, highly engaging, 1-2 hashtags.
@@ -50,6 +55,19 @@ const extractJsonPayload = (text: string): Record<string, any> => {
   }
 };
 
+/**
+ * Strips residual or hallucinated HTML tags and converts paragraph tags to clean newlines
+ */
+const sanitizeHtmlToPlainText = (text: string): string => {
+  if (!text) return "";
+  return text
+    .replace(/<br\s*\/?>/gi, "\n")      // Convert <br> or <br/> to actual newlines
+    .replace(/<\/p>/gi, "\n\n")          // Convert closing </p> to double newlines
+    .replace(/<[^>]*>/g, "")             // Strip all remaining HTML tags (<a>, <b>, <div>, etc.)
+    .replace(/[ \t]+/g, " ")             // Collapse redundant inline tabs/spaces
+    .replace(/\n\s*\n/g, "\n\n")         // Normalize multiple blank lines
+    .trim();
+};
 
 /**
  * Node 3: Create the actual post, draft it for publishing
@@ -77,7 +95,11 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
       throw new Error("Model generated JSON without a valid string 'content' field.");
     }
 
-    // 3. Normalize hashtags (handles array vs. string output, ensures '#' prefix)
+    // 3. Post-Processing Sanitizer: Strip any residual HTML tags
+    const cleanedPostContent = sanitizeHtmlToPlainText(parsedDraft.content);
+    const cleanedTitle = sanitizeHtmlToPlainText(parsedDraft.title || state.targetTopic);
+
+    // 4. Normalize hashtags (handles array vs. string output, ensures '#' prefix)
     const rawTags = Array.isArray(parsedDraft.hashtags)
       ? parsedDraft.hashtags
       : typeof parsedDraft.hashtags === "string"
@@ -88,7 +110,7 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
       .filter((t) => typeof t === "string" && t.length > 0)
       .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`));
 
-    // 4. Resolve Hero Image precedence
+    // 5. Resolve Hero Image precedence
     const heroImage =
       state.selectedHeroImage ??
       state.retrievedChunks.find((c) => c.metadata?.heroImage)?.metadata?.heroImage ??
@@ -98,8 +120,8 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
 
     return {
       draftPost: {
-        title: parsedDraft.title || state.targetTopic,
-        content: parsedDraft.content.trim(),
+        title: cleanedTitle,
+        content: cleanedPostContent,
         hashtags: normalizedHashtags,
         suggestedHeroImage: heroImage,
       },

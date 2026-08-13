@@ -1,4 +1,3 @@
-// src/services/scraper.service.ts
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import * as fs from 'node:fs/promises';
@@ -260,6 +259,11 @@ export const scrapePage = async (url: string): Promise<ScrapedPageData | null> =
     // 2. Clear out heavy layout containers that pollute clean body text strings
     $dom('script, style, nav, header, footer, noscript, iframe, .sidebar, .menu, .footer, .header').remove();
 
+    // 3. Insert newline spaces before/after block tags so words don't mash together
+    $dom('p, div, br, h1, h2, h3, h4, h5, h6, li').each((_, el) => {
+      $dom(el).append('\n');
+    });
+
     const title = $dom('title').text().trim() || '';
     const description = $dom('meta[name="description"]').attr('content')?.trim() || '';
 
@@ -274,7 +278,15 @@ export const scrapePage = async (url: string): Promise<ScrapedPageData | null> =
       bodyContainer = $dom('body');
     }
 
-    const textContent = bodyContainer.text().trim();
+    // 4. Extract text and clean up whitespace & residual HTML tags
+    const rawText = bodyContainer.text();
+
+    // Strip any lingering literal HTML tags (<p>, <br>, etc.) from code samples or encoded strings
+    const textContent = rawText
+      .replace(/<[^>]*>/g, '')         // Removes any literal <tag> occurrences
+      .replace(/[ \t]+/g, ' ')         // Collapse inline spaces/tabs
+      .replace(/\n\s*\n/g, '\n\n')     // Normalize multiple blank lines to double newlines
+      .trim();
 
     return {
       url,
