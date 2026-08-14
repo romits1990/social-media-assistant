@@ -1,4 +1,3 @@
--- 1. Create social_posts table
 CREATE TABLE IF NOT EXISTS social_posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     topic TEXT NOT NULL,

@@ -1,4 +1,3 @@
--- Up Migration
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS website_chunks (
