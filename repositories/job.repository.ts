@@ -69,3 +69,18 @@ export const getJobById = async (jobId: string): Promise<IngestionJob | null> =>
   const { rows } = await db.query(query, [jobId]);
   return rows[0] || null;
 };
+
+export const fetchAllJobs = async (status?: JobStatus): Promise<IngestionJob[]> => {
+  let query = `SELECT * FROM ingestion_jobs`;
+  const params: any[] = [];
+
+  if (status && status !== ("ALL" as any)) {
+    query += ` WHERE status = $1`;
+    params.push(status);
+  }
+
+  query += ` ORDER BY created_at DESC LIMIT 50;`;
+
+  const { rows } = await db.query(query, params);
+  return rows;
+};

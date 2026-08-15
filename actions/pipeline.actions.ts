@@ -1,6 +1,12 @@
 "use server";
 
-import { createJob, getJobById } from "@/repositories/job.repository";
+import { 
+  createJob, 
+  getJobById, 
+  fetchAllJobs, 
+  JobStatus 
+} from "@/repositories/job.repository";
+
 import {
   executeAsyncSitemapPipeline,
   executeAsyncSinglePagePipeline,
@@ -52,5 +58,15 @@ export async function checkJobStatusAction(jobId: string) {
     return { success: true, job };
   } catch (error) {
     return { success: false, error: "Status check failed" };
+  }
+}
+
+export async function getJobsListAction(status?: JobStatus) {
+  try {
+    const jobs = await fetchAllJobs(status);
+    return { success: true, jobs };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Failed to load jobs list";
+    return { success: false, error: msg, jobs: [] };
   }
 }
