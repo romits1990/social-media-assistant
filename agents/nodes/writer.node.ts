@@ -35,7 +35,7 @@ You are an expert Social Media Copywriter creating an engaging, original post fo
 ### REQUIRED JSON SCHEMA:
 {{
   "title": "Short Internal Headline",
-  "content": "Original caption text crafted specifically for {platform}",
+  "content": "Original caption text without trailing hashtags for {platform}",
   "hashtags": ["#TopicSpecific", "#IndustryNiche", "#CommunityTag"]
 }}
 `);
@@ -56,7 +56,7 @@ const extractJsonPayload = (text: string): Record<string, any> => {
 };
 
 /**
- * Strips residual or hallucinated HTML tags and converts paragraph tags to clean newlines
+ * Strips residual HTML tags and normalizes line breaks
  */
 const sanitizeHtmlToPlainText = (text: string): string => {
   if (!text) return "";
@@ -70,24 +70,61 @@ const sanitizeHtmlToPlainText = (text: string): string => {
 };
 
 /**
+ * 1. Strips trailing hashtags from the end of the post text body
+ * 2. Extracts stripped tags so they aren't lost if omitted from the hashtags array
+ */
+const stripTrailingHashtagsFromContent = (
+  text: string
+): { cleanContent: string; extractedTags: string[] } => {
+  if (!text) return { cleanContent: "", extractedTags: [] };
+
+  // Match trailing block of hashtags at the end of the text (e.g., "#tag1 #tag2 #tag3")
+  const trailingHashtagsRegex = /(?:(?:\s+|^)#[A-Za-z0-9_]+)+\s*$/;
+  const match = text.match(trailingHashtagsRegex);
+
+  const extractedTags: string[] = [];
+  let cleanContent = text;
+
+  if (match) {
+    // Extract each hashtag from the matched trailing segment
+    const tagsInMatch = match[0].match(/#[A-Za-z0-9_]+/g);
+    if (tagsInMatch) {
+      extractedTags.push(...tagsInMatch);
+    }
+    // Remove the trailing hashtag cluster from content
+    cleanContent = text.replace(trailingHashtagsRegex, "").trim();
+  }
+
+  return { cleanContent, extractedTags };
+};
+
+/**
  * Normalizes hashtags, cleans whitespace, and discards placeholder tags
  */
-const getNormalizedTags = (hashtags: unknown): string[] => {
-  const rawTags = Array.isArray(hashtags)
-    ? hashtags
-    : typeof hashtags === "string"
-      ? hashtags.split(",").map((t) => t.trim())
+const getNormalizedTags = (rawHashtags: unknown, extraTags: string[] = []): string[] => {
+  const parsedTags: string[] = Array.isArray(rawHashtags)
+    ? rawHashtags
+    : typeof rawHashtags === "string"
+      ? rawHashtags.split(/[\s,]+/).map((t) => t.trim())
       : [];
 
+  const combined = [...parsedTags, ...extraTags];
   const placeholderPattern = /^#?tag\d+$/i;
 
-  return rawTags
-    .filter((t) => typeof t === "string" && t.trim().length > 0)
-    .map((tag) => {
+  const uniqueTags = new Set<string>();
+
+  for (const tag of combined) {
+    if (typeof tag === "string" && tag.trim().length > 0) {
       const clean = tag.trim().replace(/\s+/g, "");
-      return clean.startsWith("#") ? clean : `#${clean}`;
-    })
-    .filter((tag) => !placeholderPattern.test(tag));
+      const formatted = clean.startsWith("#") ? clean : `#${clean}`;
+
+      if (!placeholderPattern.test(formatted)) {
+        uniqueTags.add(formatted);
+      }
+    }
+  }
+
+  return Array.from(uniqueTags);
 };
 
 /**
@@ -111,17 +148,19 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
     // 1. Safe JSON extraction
     const parsedDraft = extractJsonPayload(rawContent);
 
-    // 2. Validate required payload attributes
     if (!parsedDraft.content || typeof parsedDraft.content !== "string") {
       throw new Error("Model generated JSON without a valid string 'content' field.");
     }
 
-    // 3. Post-Processing Sanitizer: Strip any residual HTML tags
-    const cleanedPostContent = sanitizeHtmlToPlainText(parsedDraft.content);
+    // 2. Post-Processing Sanitizer: Strip any residual HTML tags
+    const htmlSanitizedContent = sanitizeHtmlToPlainText(parsedDraft.content);
     const cleanedTitle = sanitizeHtmlToPlainText(parsedDraft.title || state.targetTopic);
 
-    // 4. Normalize hashtags
-    const cleanedHashTags = getNormalizedTags(parsedDraft.hashtags);
+    // 3. 🎯 Hashtag Sanitizer: Strip trailing hashtags from text body & capture them
+    const { cleanContent, extractedTags } = stripTrailingHashtagsFromContent(htmlSanitizedContent);
+
+    // 4. Normalize & deduplicate hashtags across both parsed JSON and extracted text
+    const cleanedHashTags = getNormalizedTags(parsedDraft.hashtags, extractedTags);
 
     // 5. Resolve Hero Image precedence
     const heroImage =
@@ -134,11 +173,11 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
     return {
       draftPost: {
         title: cleanedTitle,
-        content: cleanedPostContent,
+        content: cleanContent,
         hashtags: cleanedHashTags,
         suggestedHeroImage: heroImage,
       },
-      status: "COMPLETED", // Transition state cleanly for Supervisor Node
+      status: "COMPLETED",
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to generate LLM draft";
