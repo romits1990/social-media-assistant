@@ -29,7 +29,7 @@ export default function AsyncSourceIngestionPage() {
     return () => clearInterval(interval);
   }, [activeJobId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!sitemapUrl.trim()) return;
 

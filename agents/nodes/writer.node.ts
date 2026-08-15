@@ -5,38 +5,38 @@ import { OLLAMA_WRITER_MODEL } from "@/constants/agent.constants";
 
 // Initialize generative model for drafting
 const writerLlm = new ChatOllama({
-  model: OLLAMA_WRITER_MODEL, 
+  model: OLLAMA_WRITER_MODEL,
   baseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-  temperature: 0.7,
+  temperature: 0.75,
   format: "json", // Forces Ollama to strictly output valid JSON
 });
 
 const WRITER_PROMPT = PromptTemplate.fromTemplate(`
-You are an expert Social Media Content Strategist. Your task is to generate an engaging post for **{platform}**.
+You are an expert Social Media Copywriter creating an engaging, original post for **{platform}**.
 
-### CONTEXT INFORMATION:
+### SOURCE CONTEXT:
 {contextSummary}
 
-### USER TOPIC / GOAL:
+### TARGET TOPIC:
 {targetTopic}
 
-### CRITICAL FORMATTING & PLAIN-TEXT RULES:
-- Output ONLY pure plain text formatted with standard line breaks (double newlines) and emojis.
-- **STRICTLY FORBIDDEN**: DO NOT use any HTML tags like <p>, <br>, <b>, <i>, <div>, or <a> tags under any circumstances.
-- Social media platform APIs will reject or corrupt raw HTML tags.
+### STRICT COPYWRITING RULES:
+1. **100% Original Words**: Do NOT reuse sentences or idiosyncratic phrases from the context. Translate the core message into your own fresh perspective.
+2. **Captivating Hook**: Start with an intriguing hook or relatable question.
+3. **Value & Emotion**: Explain why this topic matters to the audience today.
+4. **Platform Specifics**:
+   - **LinkedIn**: Professional takeaway, clear paragraph breaks, 3-4 industry hashtags.
+   - **Instagram**: Expressive storytelling, clean spacing, 3-5 emojis, 5-8 relevant hashtags.
+   - **Twitter / X**: Punchy, high-impact, under 250 characters, 1-2 hashtags.
+   - **Facebook**: Warm, community tone with an engaging question at the end.
+5. **No HTML**: Use ONLY plain text with double newlines (\\n\\n). No tags.
+6. **Dynamic Hashtags**: Generate real, relevant hashtags based on the actual content. Do NOT output placeholder words like 'tag1' or 'tag2'.
 
-### PLATFORM FORMATTING RULES:
-- **LinkedIn**: Professional tone, insightful hooks, structured bullet points, clear Call to Action (CTA), 3-5 relevant hashtags.
-- **Twitter**: Concise, punchy, strictly under 280 characters total, highly engaging, 1-2 hashtags.
-- **Instagram**: Visual narrative style, engaging opening hook, line breaks, emojis, 5-10 hashtags at the bottom.
-- **Facebook**: Conversational, community-focused, questions to drive engagement.
-
-### REQUIRED OUTPUT FORMAT:
-Respond strictly in valid JSON format matching this structure:
+### REQUIRED JSON SCHEMA:
 {{
-  "title": "Internal Post Headline",
-  "content": "The actual post text tailored for {platform}",
-  "hashtags": ["#tag1", "#tag2", "#tag3"]
+  "title": "Short Internal Headline",
+  "content": "Original caption text crafted specifically for {platform}",
+  "hashtags": ["#TopicSpecific", "#IndustryNiche", "#CommunityTag"]
 }}
 `);
 
@@ -63,10 +63,31 @@ const sanitizeHtmlToPlainText = (text: string): string => {
   return text
     .replace(/<br\s*\/?>/gi, "\n")      // Convert <br> or <br/> to actual newlines
     .replace(/<\/p>/gi, "\n\n")          // Convert closing </p> to double newlines
-    .replace(/<[^>]*>/g, "")             // Strip all remaining HTML tags (<a>, <b>, <div>, etc.)
+    .replace(/<[^>]*>/g, "")             // Strip all remaining HTML tags
     .replace(/[ \t]+/g, " ")             // Collapse redundant inline tabs/spaces
     .replace(/\n\s*\n/g, "\n\n")         // Normalize multiple blank lines
     .trim();
+};
+
+/**
+ * Normalizes hashtags, cleans whitespace, and discards placeholder tags
+ */
+const getNormalizedTags = (hashtags: unknown): string[] => {
+  const rawTags = Array.isArray(hashtags)
+    ? hashtags
+    : typeof hashtags === "string"
+      ? hashtags.split(",").map((t) => t.trim())
+      : [];
+
+  const placeholderPattern = /^#?tag\d+$/i;
+
+  return rawTags
+    .filter((t) => typeof t === "string" && t.trim().length > 0)
+    .map((tag) => {
+      const clean = tag.trim().replace(/\s+/g, "");
+      return clean.startsWith("#") ? clean : `#${clean}`;
+    })
+    .filter((tag) => !placeholderPattern.test(tag));
 };
 
 /**
@@ -99,16 +120,8 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
     const cleanedPostContent = sanitizeHtmlToPlainText(parsedDraft.content);
     const cleanedTitle = sanitizeHtmlToPlainText(parsedDraft.title || state.targetTopic);
 
-    // 4. Normalize hashtags (handles array vs. string output, ensures '#' prefix)
-    const rawTags = Array.isArray(parsedDraft.hashtags)
-      ? parsedDraft.hashtags
-      : typeof parsedDraft.hashtags === "string"
-        ? parsedDraft.hashtags.split(",").map((t) => t.trim())
-        : [];
-
-    const normalizedHashtags = rawTags
-      .filter((t) => typeof t === "string" && t.length > 0)
-      .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`));
+    // 4. Normalize hashtags
+    const cleanedHashTags = getNormalizedTags(parsedDraft.hashtags);
 
     // 5. Resolve Hero Image precedence
     const heroImage =
@@ -122,7 +135,7 @@ export const writerNode = async (state: AgentState): Promise<Partial<AgentState>
       draftPost: {
         title: cleanedTitle,
         content: cleanedPostContent,
-        hashtags: normalizedHashtags,
+        hashtags: cleanedHashTags,
         suggestedHeroImage: heroImage,
       },
       status: "COMPLETED", // Transition state cleanly for Supervisor Node
