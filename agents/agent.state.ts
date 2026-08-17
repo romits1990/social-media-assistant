@@ -26,12 +26,13 @@ export interface AgentState {
   targetTopic: string;
   topicEmbedding?: number[];
   platform: SocialPlatform;
+  targetDomain?: string;
   autoPublishEnabled: boolean;
 
   // Retry Control Flags
-  retryCount: number;         // Track current retry attempt (0, 1, 2...)
-  maxRetries: number;         // Max allowed loops (e.g., 3)
-  attemptedTopics: string[];  // Prevent retrying topics tried in this run
+  retryCount: number;
+  maxRetries: number;
+  attemptedTopics: string[];
 
   // Intermediate Agent Outputs
   retrievedChunks: VectorSearchResult[];
@@ -41,16 +42,13 @@ export interface AgentState {
 
   // Draft & Database Outputs
   draftPost: DraftPost | null;
-  persistedPostId?: string | null;
+  persistedPostId?: string;
 
-  // Workflow Control Flags
+  // Pipeline Status & Diagnostics
   status: AgentStatus;
   errorMessage?: string;
 }
 
-/**
- * LangGraph Annotation Definition
- */
 export const AgentStateAnnotation = Annotation.Root({
   targetTopic: Annotation<string>({
     reducer: (x, y) => y ?? x,
@@ -60,9 +58,13 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (x, y) => y ?? x,
     default: () => undefined,
   }),
-  platform: Annotation<SocialPlatform>({
+  platform: Annotation<SocialPlatform>(({
     reducer: (x, y) => y ?? x,
     default: () => "linkedin",
+  })),
+  targetDomain: Annotation<string | undefined>({
+    reducer: (x, y) => y ?? x,
+    default: () => undefined,
   }),
   autoPublishEnabled: Annotation<boolean>({
     reducer: (x, y) => y ?? x,
@@ -96,15 +98,15 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (x, y) => y ?? x,
     default: () => null,
   }),
-  draftPost: Annotation<AgentState["draftPost"]>({
+  draftPost: Annotation<DraftPost | null>({
     reducer: (x, y) => y ?? x,
     default: () => null,
   }),
-  persistedPostId: Annotation<string | null | undefined>({
+  persistedPostId: Annotation<string | undefined>({
     reducer: (x, y) => y ?? x,
-    default: () => null 
+    default: () => undefined,
   }),
-  status: Annotation<AgentState["status"]>({
+  status: Annotation<AgentStatus>({
     reducer: (x, y) => y ?? x,
     default: () => "IDLE",
   }),

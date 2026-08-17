@@ -1,32 +1,32 @@
 import { db } from "@/lib/db";
 
 export type VectorChunkEntity = {
-    url: string;
-    title: string;
-    chunkIndex: number;
-    content: string;
-    embedding: number[];
-    metadata: {
-        description: string;
-        h1: string[];
-        heroImage: string | null;
-        allImages: string[];
-    };
+  url: string;
+  title: string;
+  chunkIndex: number;
+  content: string;
+  embedding: number[];
+  metadata: {
+    description: string;
+    h1: string[];
+    heroImage: string | null;
+    allImages: string[];
+  };
 };
 
 export type VectorSearchResult = {
-    id: string;
-    url: string;
-    title: string;
-    content: string;
-    chunkIndex: number;
-    metadata: {
-        description?: string;
-        h1?: string[];
-        heroImage?: string | null;
-        allImages?: string[];
-    };
-    similarity: number;
+  id: string;
+  url: string;
+  title: string;
+  content: string;
+  chunkIndex: number;
+  metadata: {
+    description?: string;
+    h1?: string[];
+    heroImage?: string | null;
+    allImages?: string[];
+  };
+  similarity: number;
 };
 
 /**
@@ -34,93 +34,108 @@ export type VectorSearchResult = {
  * Clears existing chunks for the target URL before performing a bulk insert.
  */
 export const upsertWebsiteChunks = async (chunks: VectorChunkEntity[]): Promise<void> => {
-    if (chunks.length === 0) return;
+  if (chunks.length === 0) return;
 
-    const client = await db.connect();
+  const client = await db.connect();
 
-    try {
-        await client.query('BEGIN');
+  try {
+    await client.query("BEGIN");
 
-        // 1. Delete existing stale vector chunks for this URL
-        await client.query('DELETE FROM website_chunks WHERE url = $1', [chunks[0].url]);
+    // 1. Delete existing stale vector chunks for this URL
+    await client.query("DELETE FROM website_chunks WHERE url = $1", [chunks[0].url]);
 
-        // 2. Build multi-row parameter placeholders dynamically
-        // Each row needs 6 parameters: ($1, $2, $3, $4, $5::vector, $6)
-        const VALUES_PER_ROW = 6;
-        const valuePlaceholders: string[] = [];
-        const flatQueryParams: any[] = [];
+    // 2. Build multi-row parameter placeholders dynamically
+    const values: any[] = [];
+    const placeholders: string[] = [];
 
-        chunks.forEach((chunk, index) => {
-            const offset = index * VALUES_PER_ROW;
+    chunks.forEach((chunk, index) => {
+      const offset = index * 6;
+      placeholders.push(
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`
+      );
+      values.push(
+        chunk.url,
+        chunk.title,
+        chunk.chunkIndex,
+        chunk.content,
+        chunk.metadata ? JSON.stringify(chunk.metadata) : null,
+        JSON.stringify(chunk.embedding)
+      );
+    });
 
-            // Creates: ($1, $2, $3, $4, $5::vector, $6), ($7, $8, $9, $10, $11::vector, $12)...
-            valuePlaceholders.push(
-                `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}::vector, $${offset + 6})`
-            );
+    const insertQuery = `
+      INSERT INTO website_chunks (url, title, chunk_index, content, metadata, embedding)
+      VALUES ${placeholders.join(", ")}
+      ON CONFLICT (url, chunk_index) 
+      DO UPDATE SET 
+        title = EXCLUDED.title,
+        content = EXCLUDED.content,
+        metadata = EXCLUDED.metadata,
+        embedding = EXCLUDED.embedding,
+        created_at = CURRENT_TIMESTAMP;
+    `;
 
-            flatQueryParams.push(
-                chunk.url,
-                chunk.title,
-                chunk.chunkIndex,
-                chunk.content,
-                JSON.stringify(chunk.embedding),
-                JSON.stringify(chunk.metadata)
-            );
-        });
-
-        // 3. Single Bulk Query Execution
-        const bulkInsertQuery = `
-        INSERT INTO website_chunks (url, title, chunk_index, content, embedding, metadata)
-        VALUES ${valuePlaceholders.join(', ')}
-        `;
-
-        await client.query(bulkInsertQuery, flatQueryParams);
-
-        await client.query('COMMIT');
-        console.log(`     [Repository] Persisted ${chunks.length} vector rows for: ${chunks[0].url}`);
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error(`     [Repository Error] Transaction rolled back for ${chunks[0].url}:`, error);
-        throw error;
-    } finally {
-        client.release();
-    }
+    await client.query(insertQuery, values);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 /**
- * Executes a vector similarity search against PostgreSQL using pgvector HNSW index.
- * * @param queryVector 768-dimension float array from Ollama
- * @param limit Maximum chunks to retrieve (Default: 5)
- * @param similarityThreshold Minimum similarity score between 0.0 and 1.0 (Default: 0.65)
+ * Fetch distinct hostnames/domains present in the vector store
+ */
+export const fetchDistinctDomains = async (): Promise<string[]> => {
+  const query = `
+    SELECT DISTINCT 
+      SUBSTRING(url FROM 'https?://([^/]+)') AS domain
+    FROM website_chunks
+    WHERE url IS NOT NULL
+    ORDER BY domain ASC;
+  `;
+  const { rows } = await db.query(query);
+  return rows.map((r) => r.domain).filter(Boolean);
+};
+
+/**
+ * Similarity search supporting optional domain filtering
  */
 export const findSimilarChunks = async (
-    queryVector: number[],
-    limit = 5,
-    similarityThreshold = 0.65
+  queryVector: number[],
+  maxDistance: number = 0.5,
+  limit: number = 10,
+  domainFilter?: string
 ): Promise<VectorSearchResult[]> => {
-    // Convert similarity threshold to max distance threshold: Distance = 1 - Similarity
-    const maxDistance = 1 - similarityThreshold;
+  const params: any[] = [JSON.stringify(queryVector), maxDistance];
+  let domainClause = "";
 
-    const query = `
+  if (domainFilter && domainFilter !== "ALL") {
+    params.push(`%://${domainFilter}%`);
+    domainClause = `AND url ILIKE $${params.length}`;
+  }
+
+  params.push(limit);
+  const limitIndex = params.length;
+
+  const query = `
     SELECT 
-      id, 
-      url, 
-      title, 
-      content, 
+      id,
+      url,
+      title,
+      content,
+      chunk_index,
       metadata,
-      chunk_index AS "chunkIndex",
-      (1 - (embedding <=> $1::vector)) AS similarity
+      1 - (embedding <=> $1::vector) AS similarity
     FROM website_chunks
-    WHERE (embedding <=> $1::vector) <= $2
-    ORDER BY embedding <=> $1::vector ASC
-    LIMIT $3;
+    WHERE 1 - (embedding <=> $1::vector) > $2
+    ${domainClause}
+    ORDER BY similarity DESC
+    LIMIT $${limitIndex};
   `;
 
-    const { rows } = await db.query<VectorSearchResult>(query, [
-        JSON.stringify(queryVector),
-        maxDistance,
-        limit,
-    ]);
-
-    return rows;
+  const { rows } = await db.query(query, params);
+  return rows;
 };

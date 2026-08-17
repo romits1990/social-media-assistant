@@ -32,56 +32,63 @@ const getHighestRankedTargetUrl = (rawChunks: VectorSearchResult[]) => {
   return { targetUrl, highestAvgScore };
 };
 
-/**
- * Node 2: Fetches context chunks from Postgres pgvector using cosine distance.
- */
 export const retrieverNode = async (state: AgentState): Promise<Partial<AgentState>> => {
+  if (state.status === "FAILED") return {};
+
   try {
-    console.log(`🤖 [Retriever Agent] Processing topic: "${state.targetTopic}"...`);
+    console.log(
+      `🔍 [Retriever Agent] Vectorizing topic "${state.targetTopic}" ${
+        state.targetDomain ? `[Scoped Domain: ${state.targetDomain}]` : ""
+      }...`
+    );
 
-    // 1. Fetch top 10 candidate chunks across vector space
-    const queryVector = await embeddingsPipeline.embedQuery(state.targetTopic);
-    const rawChunks = await findSimilarChunks(queryVector, 10, 0.65);
+    const queryEmbedding = await embeddingsPipeline.embedQuery(state.targetTopic);
 
-    if (rawChunks.length === 0) {
-      console.warn(`⚠️ [Retriever Agent] No relevant context found for: "${state.targetTopic}"`);
+    // 1. Similarity query scoped by optional targetDomain
+    const rawChunks = await findSimilarChunks(
+      queryEmbedding,
+      0.45,
+      10,
+      state.targetDomain
+    );
+
+    if (!rawChunks || rawChunks.length === 0) {
+      console.warn(
+        `⚠️ [Retriever Agent] No vector matches found for topic: "${state.targetTopic}" under domain "${
+          state.targetDomain || "ALL"
+        }"`
+      );
       return {
+        status: "EMPTY_CHUNKS",
+        errorMessage: `No relevant content found matching topic: "${state.targetTopic}".`,
         retrievedChunks: [],
-        selectedHeroImage: null,
-        contextSummary: "No relevant internal content found.",
-        status: "EMPTY_CHUNKS"
       };
     }
 
-    // 2. Identify winning URL via Grouped URL Scoring (aggregating vector scores across top chunks)
+    // 2. Identify top parent document
     const { targetUrl, highestAvgScore } = getHighestRankedTargetUrl(rawChunks);
-
-    // 3. Filter retrieved chunks to ONLY keep those from the winning URL
     const pageChunks = rawChunks
       .filter((c) => c.url === targetUrl)
-      .sort((a, b) => a.chunkIndex - b.chunkIndex); // Sort in natural reading order
+      .sort((a, b) => a.chunkIndex - b.chunkIndex);
 
-    // 4. Extract page metadata safely from the top chunk
-    const primaryChunk = pageChunks[0];
-    const primaryTitle = primaryChunk.title || "Untitled Page";
-    const primaryDescription = primaryChunk.metadata?.description || "";
-    const primaryH1 = Array.isArray(primaryChunk.metadata?.h1)
-      ? primaryChunk.metadata.h1.join(", ")
-      : "";
-    const primaryHeroImage = primaryChunk.metadata?.heroImage ?? null;
+    // 3. Extract metadata
+    const primaryTitle = pageChunks[0].title || "Knowledge Article";
+    const primaryDescription = pageChunks[0].metadata?.description || "";
+    const primaryH1 = pageChunks[0].metadata?.h1?.join(", ") || "";
+    const primaryHeroImage =
+      pageChunks.find((c) => c.metadata?.heroImage)?.metadata?.heroImage ?? null;
 
+    // 4. Validate Instagram Hero Image requirement
     if (state.platform === "instagram" && !primaryHeroImage) {
-      console.warn(`⚠️ [Retriever Agent] Stopping post draft because Hero image is missing for platform instagram`);
+      console.warn(`⚠️ [Retriever Agent] Skipping Instagram post: No hero image on source page.`);
       return {
         status: "FAILED",
         errorMessage: "Instagram post requires a valid hero image, but none was found on the source page.",
       };
     }
 
-    // 5. Build full body content text from sorted chunks
+    // 5. Context construction
     const chunksContent = pageChunks.map((c) => c.content).join("\n\n");
-
-    // 6. Construct framed context summary for the Writer LLM (clean whitespace)
     const contextOverviewHeader = [
       `[SOURCE PAGE OVERVIEW]`,
       `Source URL: ${targetUrl}`,
@@ -95,8 +102,8 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
     const contextSummary = `${contextOverviewHeader}\n\n[DETAILED CONTENT CHUNKS]\n${chunksContent}`;
 
     console.log(
-      `✅ [Retriever Agent] Successfully retrieved ${pageChunks.length} contextual chunks for ${targetUrl} ` +
-      `(Avg Similarity: ${(highestAvgScore * 100).toFixed(1)}%)`
+      `✅ [Retriever Agent] Retrieved ${pageChunks.length} chunks for ${targetUrl} ` +
+      `(Avg Sim: ${(highestAvgScore * 100).toFixed(1)}%)`
     );
 
     return {
@@ -106,11 +113,11 @@ export const retrieverNode = async (state: AgentState): Promise<Partial<AgentSta
       status: "WRITING",
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Unknown error in retriever node";
+    const msg = error instanceof Error ? error.message : "Retriever execution failed";
     console.error(`❌ [Retriever Agent Error]: ${msg}`);
     return {
       status: "FAILED",
-      errorMessage: msg,
+      errorMessage: `Retriever error: ${msg}`,
     };
   }
 };
