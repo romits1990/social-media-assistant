@@ -32,7 +32,7 @@ export default function SinglePageIngestPage() {
     return () => clearInterval(interval);
   }, [activeJobId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!pageUrl.trim()) return;
 

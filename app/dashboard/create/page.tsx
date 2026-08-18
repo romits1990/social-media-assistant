@@ -40,7 +40,7 @@ export default function CreatePostPage() {
     loadDomains();
   }, []);
 
-  const handleGenerate = async (e: React.FormEvent) => {
+  const handleGenerate = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!topic.trim()) return;
 
