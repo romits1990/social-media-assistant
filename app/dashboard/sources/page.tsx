@@ -1,255 +1,191 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  generateCustomPostAction,
-  publishOrRetryPostAction,
-  getAvailableDomainsAction,
-} from "@/actions/post.actions";
-import { SocialPlatform } from "@/agents/agent.state";
+import { startAsyncSitemapPipelineAction, checkJobStatusAction } from "@/actions/pipeline.actions";
+import { IngestionJob } from "@/repositories/job.repository";
+import Link from "next/link";
 
-export default function CreatePostPage() {
-  const [topic, setTopic] = useState("");
-  const [platform, setPlatform] = useState<SocialPlatform>("instagram");
-  const [selectedDomain, setSelectedDomain] = useState<string>("ALL");
-  const [availableDomains, setAvailableDomains] = useState<string[]>([]);
-  const [autoPublish, setAutoPublish] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+export default function AsyncSourceIngestionPage() {
+  const [sitemapUrl, setSitemapUrl] = useState("");
+  const [fileLimit, setFileLimit] = useState<number | undefined>(undefined);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobData, setJobData] = useState<IngestionJob | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Editable draft preview state
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedContent, setEditedContent] = useState("");
-  const [generatedResult, setGeneratedResult] = useState<{
-    postId?: string;
-    title: string;
-    hashtags: string[];
-    heroImage: string | null;
-    status: string;
-  } | null>(null);
-
-  // Load distinct domains on mount
   useEffect(() => {
-    async function loadDomains() {
-      const res = await getAvailableDomainsAction();
-      if (res.success && res.domains) {
-        setAvailableDomains(res.domains);
+    if (!activeJobId) return;
+
+    const interval = setInterval(async () => {
+      const res = await checkJobStatusAction(activeJobId);
+      if (res.success && res.job) {
+        setJobData(res.job);
+        if (res.job.status === "COMPLETED" || res.job.status === "FAILED") {
+          clearInterval(interval);
+          setActiveJobId(null);
+        }
       }
-    }
-    loadDomains();
-  }, []);
+    }, 2000);
 
-  const handleGenerate = async (e: React.FormEvent) => {
+    return () => clearInterval(interval);
+  }, [activeJobId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim()) return;
+    if (!sitemapUrl.trim()) return;
 
-    setLoading(true);
-    setErrorMessage(null);
-    setGeneratedResult(null);
+    setSubmitting(true);
+    setJobData(null);
 
-    const res = await generateCustomPostAction({
-      targetTopic: topic,
-      platform,
-      targetDomain: selectedDomain,
-      autoPublishEnabled: autoPublish,
-    });
+    const res = await startAsyncSitemapPipelineAction(sitemapUrl, fileLimit);
+    setSubmitting(false);
 
-    setLoading(false);
-
-    if (!res.success) {
-      setErrorMessage(res.error || "Failed to generate post for this topic.");
-      return;
+    if (res.success && res.jobId) {
+      setActiveJobId(res.jobId);
     }
-
-    if (res.draftPost) {
-      setGeneratedResult({
-        postId: res.postId ?? undefined,
-        title: res.draftPost.title,
-        hashtags: res.draftPost.hashtags,
-        heroImage: res.heroImage ?? null,
-        status: res.status,
-      });
-      setEditedContent(res.draftPost.content);
-    }
-  };
-
-  const handleApproveAndPublish = async () => {
-    if (!generatedResult?.postId) return;
-
-    setPublishing(true);
-    setErrorMessage(null);
-
-    const res = await publishOrRetryPostAction(
-      generatedResult.postId,
-      editedContent,
-      generatedResult.hashtags
-    );
-    setPublishing(false);
-
-    if (!res.success) {
-      setErrorMessage(res.error || "Failed to publish post.");
-      return;
-    }
-
-    setGeneratedResult((prev) => (prev ? { ...prev, status: "PUBLISHED" } : null));
   };
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Custom Post Generator</h1>
-        <p className="text-sm text-gray-500">
-          Filter by source domain and draft targeted AI social posts on demand.
-        </p>
+      <div className="flex justify-between items-center border-b pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Sitemap Ingestion Pipeline</h1>
+          <p className="text-sm text-gray-500">
+            Crawl, scrape, and vectorize multiple pages asynchronously with real-time job monitoring.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/sources/single"
+          className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-2 rounded-md hover:bg-blue-100 transition"
+        >
+          Single Page Ingest →
+        </Link>
       </div>
 
-      {/* Generator Form */}
-      <form onSubmit={handleGenerate} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-4">
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Target Topic / Goal
+            Sitemap URL (XML or Index)
           </label>
           <input
-            type="text"
+            type="url"
             required
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Shel Silverstein 20th Anniversary Edition"
-            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+            disabled={!!activeJobId}
+            value={sitemapUrl}
+            onChange={(e) => setSitemapUrl(e.target.value)}
+            placeholder="https://example.com/sitemap.xml"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm disabled:bg-gray-50"
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Domain Filter Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Source Website Domain
-            </label>
-            <select
-              value={selectedDomain}
-              onChange={(e) => setSelectedDomain(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm bg-white"
-            >
-              <option value="ALL">🌐 All Ingested Websites</option>
-              {availableDomains.map((domain) => (
-                <option key={domain} value={domain}>
-                  {domain}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Social Platform Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Social Platform
-            </label>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
-              className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none capitalize text-sm bg-white"
-            >
-              <option value="instagram">Instagram</option>
-              <option value="linkedin">LinkedIn</option>
-              <option value="twitter">Twitter / X</option>
-              <option value="facebook">Facebook</option>
-            </select>
-          </div>
-
-          {/* Auto Publish Toggle */}
-          <div className="flex items-center pt-2 md:pt-6">
-            <label className="flex items-center cursor-pointer space-x-2">
-              <input
-                type="checkbox"
-                checked={autoPublish}
-                onChange={(e) => setAutoPublish(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-              />
-              <span className="text-sm font-medium text-gray-700">Auto-Publish</span>
-            </label>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Page Processing Limit <span className="text-gray-400 font-normal">(Optional, for batch testing)</span>
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            disabled={!!activeJobId}
+            value={fileLimit || ""}
+            onChange={(e) => setFileLimit(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+            placeholder="e.g. 10"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm disabled:bg-gray-50"
+          />
         </div>
 
         <button
           type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded-md hover:bg-blue-700 transition disabled:opacity-50 text-sm"
+          disabled={submitting || !!activeJobId}
+          className="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded-md hover:bg-blue-700 transition disabled:opacity-50 text-sm flex justify-center items-center space-x-2"
         >
-          {loading ? "🤖 Running Scoped Vector Retrieval..." : "Generate Post Draft"}
+          {activeJobId ? (
+            <>
+              <span className="animate-spin text-base">⏳</span>
+              <span>Job Running in Background...</span>
+            </>
+          ) : (
+            <span>🚀 Queue Sitemap Ingestion Job</span>
+          )}
         </button>
       </form>
 
-      {/* Error Banner */}
-      {errorMessage && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
-          ⛔ {errorMessage}
-        </div>
-      )}
-
-      {/* Live Preview & Editor Card */}
-      {generatedResult && (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden p-6 space-y-4">
+      {jobData && (
+        <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b pb-3">
-            <span className="text-xs font-semibold uppercase px-2.5 py-1 rounded bg-blue-100 text-blue-800">
-              {platform} {selectedDomain !== "ALL" ? `(${selectedDomain})` : ""}
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsEditing(!isEditing)}
-              className="text-xs text-blue-600 hover:underline font-medium"
+            <div>
+              <span className="text-xs font-mono text-gray-400">Job ID: {jobData.id}</span>
+              <h3 className="font-bold text-gray-900 text-sm mt-0.5">Target: {jobData.target_url}</h3>
+            </div>
+            <span
+              className={`text-xs font-semibold px-2.5 py-1 rounded uppercase ${
+                jobData.status === "COMPLETED"
+                  ? "bg-green-100 text-green-800"
+                  : jobData.status === "FAILED"
+                  ? "bg-red-100 text-red-800"
+                  : "bg-blue-100 text-blue-800 animate-pulse"
+              }`}
             >
-              {isEditing ? "Done Editing" : "✏️ Edit Draft"}
-            </button>
+              {jobData.status}
+            </span>
           </div>
 
-          {/* Hero Image */}
-          {generatedResult.heroImage && (
-            <div className="rounded-md overflow-hidden bg-gray-100 max-h-80 flex justify-center items-center border">
-              <img
-                src={generatedResult.heroImage}
-                alt="Selected Hero Candidate"
-                className="object-cover h-full w-full"
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs font-medium text-gray-600">
+              <span>
+                Processed {jobData.processed_items} of {jobData.total_items || "?"} steps
+              </span>
+              <span>{jobData.progress_percentage}%</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  jobData.status === "FAILED" ? "bg-red-500" : "bg-blue-600"
+                }`}
+                style={{ width: `${jobData.progress_percentage}%` }}
               />
+            </div>
+          </div>
+
+          {jobData.status === "FAILED" && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded">
+              ⛔ {jobData.error_message || "An unexpected error halted pipeline execution."}
             </div>
           )}
 
-          {/* Post Copy */}
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">{generatedResult.title}</h2>
-            {isEditing ? (
-              <textarea
-                rows={6}
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                className="w-full mt-2 p-3 border rounded-md text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-none font-sans"
-              />
-            ) : (
-              <p className="mt-2 text-gray-700 whitespace-pre-wrap text-sm leading-relaxed font-sans">
-                {editedContent}
-              </p>
-            )}
-          </div>
-
-          {/* Hashtags */}
-          {generatedResult.hashtags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 text-sm text-blue-600 font-medium">
-              {generatedResult.hashtags.map((tag, i) => (
-                <span key={i}>{tag.startsWith("#") ? tag : `#${tag}`}</span>
-              ))}
-            </div>
-          )}
-
-          {/* Action Footer */}
-          {generatedResult.status === "AWAITING_APPROVAL" && generatedResult.postId && (
-            <div className="pt-4 border-t flex justify-end">
-              <button
-                onClick={handleApproveAndPublish}
-                disabled={publishing}
-                className="bg-green-600 text-white font-medium px-4 py-2 rounded-md hover:bg-green-700 transition disabled:opacity-50 text-sm"
-              >
-                {publishing ? "Publishing to API..." : "Approve & Publish Now"}
-              </button>
+          {jobData.status === "COMPLETED" && jobData.result_data && (
+            <div className="bg-green-50 p-4 rounded-md border border-green-200 text-xs space-y-3">
+              <div className="font-bold text-green-800 flex items-center space-x-1.5">
+                <span>🎉</span>
+                <span>Ingestion Pipeline Completed Successfully!</span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-gray-700">
+                <div className="bg-white p-2.5 rounded border border-green-100">
+                  <span className="text-gray-500 block">Tenant Hostname</span>
+                  <span className="font-bold text-gray-900 mt-0.5 block truncate">
+                    {jobData.result_data.hostname}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded border border-green-100">
+                  <span className="text-gray-500 block">Pages Scraped</span>
+                  <span className="font-bold text-gray-900 mt-0.5 block">
+                    {jobData.result_data.pagesScraped} files
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded border border-green-100">
+                  <span className="text-gray-500 block">Pages Vectorized</span>
+                  <span className="font-bold text-gray-900 mt-0.5 block">
+                    {jobData.result_data.pagesIngested} pages
+                  </span>
+                </div>
+              </div>
+              <div className="pt-1 flex justify-end">
+                <Link
+                  href="/dashboard/create"
+                  className="bg-green-700 text-white px-3 py-1.5 rounded font-semibold text-xs hover:bg-green-800 transition"
+                >
+                  Draft Social Posts Now →
+                </Link>
+              </div>
             </div>
           )}
         </div>
