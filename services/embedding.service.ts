@@ -5,20 +5,6 @@ import { ScrapedPageData } from "@/services/scraper.service";
 import { upsertWebsiteChunks, VectorChunkEntity } from "@/repositories/vector.repository";
 import { CHUNK_OVERLAP, CHUNK_SIZE, EMBEDDING_MODEL_NAME, EXPECTED_VECTOR_DIMENSION } from "@/constants/vector.constants";
 
-export type ProcessedVectorChunk = {
-  url: string;
-  title: string;
-  chunkIndex: number;
-  content: string;
-  embedding: number[];
-  metadata: {
-    description: string;
-    h1: string[];
-    heroImage: string | null;
-    allImages: string[];
-  };
-};
-
 const splitter = new RecursiveCharacterTextSplitter({
   chunkSize: CHUNK_SIZE,
   chunkOverlap: CHUNK_OVERLAP
@@ -53,9 +39,9 @@ const chunkArray = <T>(array: T[], size: number): T[][] => {
 };
 
 /**
- * Cleans text, splits into documents, generates embeddings, and persists to PostgreSQL.
+ * Cleans text, splits into documents, generates embeddings, and persists.
  */
-export const processAndEmbedPageContent = async (pageData: ScrapedPageData): Promise<void> => {
+export const processAndEmbedPageContent = async (pageData: ScrapedPageData, domain: string = 'UNKNOWN'): Promise<void> => {
   try {
     const cleanedText = cleanTextContent(pageData.textContent);
     if (!cleanedText) {
@@ -108,6 +94,7 @@ export const processAndEmbedPageContent = async (pageData: ScrapedPageData): Pro
       content: doc.pageContent,
       embedding: vectors[index],
       metadata: {
+        domain,
         description: cleanedDescription,
         h1: cleanedH1,
         heroImage,

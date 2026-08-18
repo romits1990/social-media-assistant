@@ -20,7 +20,7 @@ export const executeAsyncSinglePagePipeline = async (
   jobId: string,
   pageUrl: string
 ): Promise<void> => {
-  const { isValid, url } = getValidUrlDetails(pageUrl);
+  const { isValid, url, hostname } = getValidUrlDetails(pageUrl);
 
   if (!isValid || !url) {
     await updateJobProgress(jobId, {
@@ -54,7 +54,7 @@ export const executeAsyncSinglePagePipeline = async (
     });
 
     console.log(`⚡ [Single Ingest Job: ${jobId}] Chunking & embedding content...`);
-    await processAndEmbedPageContent(scrapedData);
+    await processAndEmbedPageContent(scrapedData, hostname);
 
     const heroImage =
       scrapedData.images && scrapedData.images.length > 0 ? scrapedData.images[0] : null;
@@ -151,7 +151,7 @@ export const executeAsyncSitemapPipeline = async (
     const ingestionTask = async (fileName: string) => {
       const pageData: ScrapedPageData | null = await readScrapedFileContent(fileName, hostname);
       if (pageData) {
-        await processAndEmbedPageContent(pageData);
+        await processAndEmbedPageContent(pageData, hostname);
         ingestedCount++;
         const ingestPct = 50 + Math.round((ingestedCount / jsonFiles.length) * 50);
         await updateJobProgress(jobId, {

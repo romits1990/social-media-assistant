@@ -7,10 +7,11 @@ export type VectorChunkEntity = {
   content: string;
   embedding: number[];
   metadata: {
-    description: string;
-    h1: string[];
-    heroImage: string | null;
-    allImages: string[];
+    domain: string;
+    description?: string;
+    h1?: string[];
+    heroImage?: string | null;
+    allImages?: string[];
   };
 };
 
@@ -21,6 +22,7 @@ export type VectorSearchResult = {
   content: string;
   chunkIndex: number;
   metadata: {
+    domain?: string;
     description?: string;
     h1?: string[];
     heroImage?: string | null;
@@ -31,17 +33,17 @@ export type VectorSearchResult = {
 
 /**
  * Idempotently saves a batch of vector chunks for a specific URL.
- * Clears existing chunks for the target URL before performing a bulk insert.
+ * Clears existing chunks for the target URL before performing a bulk upsert.
  */
 export const upsertWebsiteChunks = async (chunks: VectorChunkEntity[]): Promise<void> => {
-  if (chunks.length === 0) return;
+  if (!chunks || chunks.length === 0) return;
 
   const client = await db.connect();
 
   try {
     await client.query("BEGIN");
 
-    // 1. Delete existing stale vector chunks for this URL
+    // 1. Delete existing stale vector chunks for this URL (ensures full sync)
     await client.query("DELETE FROM website_chunks WHERE url = $1", [chunks[0].url]);
 
     // 2. Build multi-row parameter placeholders dynamically
@@ -58,7 +60,7 @@ export const upsertWebsiteChunks = async (chunks: VectorChunkEntity[]): Promise<
         chunk.title,
         chunk.chunkIndex,
         chunk.content,
-        chunk.metadata ? JSON.stringify(chunk.metadata) : null,
+        JSON.stringify(chunk.metadata || {}),
         JSON.stringify(chunk.embedding)
       );
     });
@@ -86,14 +88,13 @@ export const upsertWebsiteChunks = async (chunks: VectorChunkEntity[]): Promise<
 };
 
 /**
- * Fetch distinct hostnames/domains present in the vector store
+ * Fetch distinct domains extracted directly from JSONB metadata
  */
 export const fetchDistinctDomains = async (): Promise<string[]> => {
   const query = `
-    SELECT DISTINCT 
-      SUBSTRING(url FROM 'https?://([^/]+)') AS domain
+    SELECT DISTINCT metadata->>'domain' AS domain
     FROM website_chunks
-    WHERE url IS NOT NULL
+    WHERE metadata->>'domain' IS NOT NULL AND metadata->>'domain' != ''
     ORDER BY domain ASC;
   `;
   const { rows } = await db.query(query);
@@ -101,7 +102,7 @@ export const fetchDistinctDomains = async (): Promise<string[]> => {
 };
 
 /**
- * Similarity search supporting optional domain filtering
+ * Similarity search supporting optional indexed JSONB domain filtering
  */
 export const findSimilarChunks = async (
   queryVector: number[],
@@ -113,12 +114,12 @@ export const findSimilarChunks = async (
   let domainClause = "";
 
   if (domainFilter && domainFilter !== "ALL") {
-    params.push(`%://${domainFilter}%`);
-    domainClause = `AND url ILIKE $${params.length}`;
+    params.push(domainFilter);
+    domainClause = `AND metadata->>'domain' = $${params.length}`;
   }
 
   params.push(limit);
-  const limitIndex = params.length;
+  const limitPlaceholder = `$${params.length}`;
 
   const query = `
     SELECT 
@@ -133,7 +134,7 @@ export const findSimilarChunks = async (
     WHERE 1 - (embedding <=> $1::vector) > $2
     ${domainClause}
     ORDER BY similarity DESC
-    LIMIT $${limitIndex};
+    LIMIT ${limitPlaceholder};
   `;
 
   const { rows } = await db.query(query, params);

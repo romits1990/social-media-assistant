@@ -41,7 +41,7 @@ const run = async () => {
                     return;
                 }
 
-                await processAndEmbedPageContent(pageData);
+                await processAndEmbedPageContent(pageData, hostname);
             } catch (taskError) {
                 const msg = taskError instanceof Error ? taskError.message : 'Unknown task error';
                 console.error(`❌ [Task Failed] Error processing file "${fileName}": ${msg}`);
