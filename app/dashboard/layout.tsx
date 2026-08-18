@@ -35,6 +35,12 @@ const NAV_ITEMS = [
     icon: "⚡",
     description: "Direct single URL embedding",
   },
+  {
+    name: "Recurring Schedules",
+    href: "/dashboard/schedules",
+    icon: "⏰",
+    description: "Manage cron schedules & auto-runs",
+  }
 ];
 
 export default function DashboardLayout({
