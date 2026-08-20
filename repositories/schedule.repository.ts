@@ -4,52 +4,85 @@ import { SocialPlatform } from "@/agents/agent.state";
 export type RecurringScheduleEntity = {
   id: string;
   name: string;
-  cron_expression: string;
+  cronExpression: string;
   platform: SocialPlatform;
-  target_topic: string;
-  target_domain: string;
-  auto_publish: boolean;
-  is_active: boolean;
-  last_run_at: string | null;
-  next_run_at: string | null;
-  created_at: string;
-  updated_at: string;
+  targetTopic: string;
+  targetDomain: string;
+  autoPublish: boolean;
+  isActive: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
+export type CreateScheduleInput = {
+  name: string;
+  cronExpression: string;
+  platform: SocialPlatform;
+  targetTopic?: string;
+  targetDomain?: string;
+  autoPublish?: boolean;
+};
+
+const SELECT_SCHEDULES_MAPPING = `
+  SELECT 
+    id,
+    name,
+    cron_expression AS "cronExpression",
+    platform,
+    target_topic AS "targetTopic",
+    target_domain AS "targetDomain",
+    auto_publish AS "autoPublish",
+    is_active AS "isActive",
+    last_run_at AS "lastRunAt",
+    next_run_at AS "nextRunAt",
+    created_at AS "createdAt",
+    updated_at AS "updatedAt"
+  FROM recurring_schedules
+`;
+
 export const getSchedules = async (): Promise<RecurringScheduleEntity[]> => {
-  const query = `SELECT * FROM recurring_schedules ORDER BY created_at DESC;`;
-  const { rows } = await db.query(query);
+  const query = `${SELECT_SCHEDULES_MAPPING} ORDER BY created_at DESC;`;
+  const { rows } = await db.query<RecurringScheduleEntity>(query);
   return rows;
 };
 
 export const getActiveSchedules = async (): Promise<RecurringScheduleEntity[]> => {
-  const query = `SELECT * FROM recurring_schedules WHERE is_active = TRUE;`;
-  const { rows } = await db.query(query);
+  const query = `${SELECT_SCHEDULES_MAPPING} WHERE is_active = TRUE;`;
+  const { rows } = await db.query<RecurringScheduleEntity>(query);
   return rows;
 };
 
-export const createSchedule = async (data: {
-  name: string;
-  cron_expression: string;
-  platform: SocialPlatform;
-  target_topic: string;
-  target_domain: string;
-  auto_publish: boolean;
-}): Promise<RecurringScheduleEntity> => {
+export const createSchedule = async (
+  data: CreateScheduleInput
+): Promise<RecurringScheduleEntity> => {
   const query = `
     INSERT INTO recurring_schedules (
       name, cron_expression, platform, target_topic, target_domain, auto_publish
     )
     VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *;
+    RETURNING 
+      id,
+      name,
+      cron_expression AS "cronExpression",
+      platform,
+      target_topic AS "targetTopic",
+      target_domain AS "targetDomain",
+      auto_publish AS "autoPublish",
+      is_active AS "isActive",
+      last_run_at AS "lastRunAt",
+      next_run_at AS "nextRunAt",
+      created_at AS "createdAt",
+      updated_at AS "updatedAt";
   `;
-  const { rows } = await db.query(query, [
+  const { rows } = await db.query<RecurringScheduleEntity>(query, [
     data.name,
-    data.cron_expression,
+    data.cronExpression,
     data.platform,
-    data.target_topic,
-    data.target_domain || "ALL",
-    data.auto_publish,
+    data.targetTopic,
+    data.targetDomain || "ALL",
+    data.autoPublish ?? false,
   ]);
   return rows[0];
 };

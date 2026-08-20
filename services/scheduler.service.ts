@@ -1,99 +1,105 @@
 import cron, { ScheduledTask } from "node-cron";
-import { getActiveSchedules, updateScheduleLastRun } from "@/repositories/schedule.repository";
+import {
+  getActiveSchedules,
+  updateScheduleLastRun,
+  RecurringScheduleEntity,
+} from "@/repositories/schedule.repository";
 import { socialAssistantGraph } from "@/agents/social.workflow";
 
-// Global registry for in-memory active cron tasks
+// In-memory active cron registry mapped by schedule UUID
 const scheduledTasksMap = new Map<string, ScheduledTask>();
 
 /**
- * Executes a single schedule tick through the LangGraph agent pipeline
+ * Executes a single scheduled tick through the LangGraph multi-agent pipeline
  */
-export const runScheduledPostJob = async (scheduleId: string, schedule: {
-  target_topic: string;
-  platform: any;
-  target_domain: string;
-  auto_publish: boolean;
-}) => {
-  console.log(`⏰ [Scheduler] Executing cron job for schedule: "${schedule.target_topic}" on ${schedule.platform}`);
+export const runScheduledPostJob = async (schedule: RecurringScheduleEntity): Promise<void> => {
+  console.log(`⏰ [Scheduler] Running schedule "${schedule.name}" for [${schedule.targetTopic}] on ${schedule.platform}`);
 
   try {
     const result = await socialAssistantGraph.invoke({
-      targetTopic: schedule.target_topic,
+      targetTopic: schedule.targetTopic,
       platform: schedule.platform,
-      targetDomain: schedule.target_domain !== "ALL" ? schedule.target_domain : undefined,
-      autoPublishEnabled: schedule.auto_publish,
+      targetDomain: schedule.targetDomain !== "ALL" ? schedule.targetDomain : undefined,
+      autoPublishEnabled: schedule.autoPublish,
       retryCount: 0,
       maxRetries: 3,
-      attemptedTopics: [schedule.target_topic],
+      attemptedTopics: [schedule.targetTopic],
     });
 
-    await updateScheduleLastRun(scheduleId);
-    console.log(`✅ [Scheduler] Completed cron run for schedule ${scheduleId}. Result Status: ${result.status}`);
+    await updateScheduleLastRun(schedule.id);
+    console.log(`✅ [Scheduler] Completed execution for schedule ${schedule.id}. Status: ${result.status}`);
   } catch (error) {
-    console.error(`❌ [Scheduler Error] Failed to execute cron schedule ${scheduleId}:`, error);
+    console.error(`❌ [Scheduler Error] Execution failed for schedule ${schedule.id}:`, error);
   }
 };
 
 /**
- * Registers or replaces an active cron job in memory
+ * Unregisters and stops a single cron task from memory
  */
-export const registerCronTask = (schedule: {
-  id: string;
-  cron_expression: string;
-  target_topic: string;
-  platform: any;
-  target_domain: string;
-  auto_publish: boolean;
-  is_active: boolean;
-}) => {
-  // Stop and remove existing running task if it exists
-  if (scheduledTasksMap.has(schedule.id)) {
-    scheduledTasksMap.get(schedule.id)?.stop();
-    scheduledTasksMap.delete(schedule.id);
-  }
-
-  if (!schedule.is_active) return;
-
-  if (!cron.validate(schedule.cron_expression)) {
-    console.error(`⚠️ [Scheduler] Invalid cron expression "${schedule.cron_expression}" for schedule ${schedule.id}`);
-    return;
-  }
-
-  const task = cron.schedule(schedule.cron_expression, async () => {
-    await runScheduledPostJob(schedule.id, schedule);
-  });
-
-  scheduledTasksMap.set(schedule.id, task);
-  console.log(`🕒 [Scheduler] Registered active cron "${schedule.cron_expression}" for [${schedule.target_topic}]`);
-};
-
-/**
- * Initializes and synchronizes all active database schedules into memory on app boot
- */
-export const initializeAllSchedules = async () => {
-  try {
-    const activeList = await getActiveSchedules();
-    console.log(`🚀 [Scheduler] Bootstrapping ${activeList.length} active schedules from database...`);
-
-    // Clear stale in-memory tasks
-    scheduledTasksMap.forEach((t) => t.stop());
-    scheduledTasksMap.clear();
-
-    for (const schedule of activeList) {
-      registerCronTask(schedule);
-    }
-  } catch (error) {
-    console.error("❌ [Scheduler] Initialization error:", error);
-  }
-};
-
-/**
- * Unregisters a cron task by ID
- */
-export const unregisterCronTask = (scheduleId: string) => {
-  if (scheduledTasksMap.has(scheduleId)) {
-    scheduledTasksMap.get(scheduleId)?.stop();
+export const unregisterCronTask = (scheduleId: string): void => {
+  const existingTask = scheduledTasksMap.get(scheduleId);
+  if (existingTask) {
+    existingTask.stop();
     scheduledTasksMap.delete(scheduleId);
     console.log(`⏹️ [Scheduler] Unregistered task for schedule ID: ${scheduleId}`);
   }
+};
+
+/**
+ * Registers or replaces an active cron task in memory
+ */
+export const registerCronTask = (schedule: RecurringScheduleEntity): void => {
+  // Reusable unregister helper ensures zero duplicate timers
+  unregisterCronTask(schedule.id);
+
+  if (!schedule.isActive) return;
+
+  if (!cron.validate(schedule.cronExpression)) {
+    console.error(`⚠️ [Scheduler] Invalid cron expression "${schedule.cronExpression}" for schedule: ${schedule.id}`);
+    return;
+  }
+
+  const task = cron.schedule(schedule.cronExpression, async () => {
+    await runScheduledPostJob(schedule);
+  });
+
+  scheduledTasksMap.set(schedule.id, task);
+  console.log(`🕒 [Scheduler] Active cron "${schedule.cronExpression}" registered for [${schedule.targetTopic}]`);
+};
+
+/**
+ * Robust initializer with auto-retry for Neon DB wake-ups 
+ * Synchronizes and bootstraps all active database schedules on server boot
+ */
+export const initializeAllSchedules = async (retries = 3, delayMs = 2000): Promise<void> => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const activeList = await getActiveSchedules();
+      console.log(`🚀 [Scheduler] Bootstrapping ${activeList.length} active schedules...`);
+
+      stopAllSchedules();
+
+      for (const schedule of activeList) {
+        registerCronTask(schedule);
+      }
+      return;
+    } catch (error) {
+      console.warn(`⚠️ [Scheduler] Init attempt ${attempt}/${retries} failed:`, error instanceof Error ? error.message : error);
+      if (attempt < retries) {
+        await new Promise((res) => setTimeout(res, delayMs));
+      } else {
+        console.error("❌ [Scheduler] Final initialization failed after retries.");
+      }
+    }
+  }
+};
+
+/**
+ * Graceful shutdown helper: Stops all in-memory cron jobs
+ */
+export const stopAllSchedules = (): void => {
+  console.log(`🛑 [Scheduler] Stopping ${scheduledTasksMap.size} active tasks...`);
+  scheduledTasksMap.forEach((task) => task.stop());
+  scheduledTasksMap.clear();
+  console.log("✅ [Scheduler] All in-memory cron tasks stopped.");
 };

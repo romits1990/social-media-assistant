@@ -23,7 +23,7 @@ export type AgentStatus =
 
 export interface AgentState {
   // Inputs
-  targetTopic: string;
+  targetTopic?: string;
   topicEmbedding?: number[];
   platform: SocialPlatform;
   targetDomain?: string;
@@ -50,9 +50,9 @@ export interface AgentState {
 }
 
 export const AgentStateAnnotation = Annotation.Root({
-  targetTopic: Annotation<string>({
+  targetTopic: Annotation<string | undefined>({
     reducer: (x, y) => y ?? x,
-    default: () => "",
+    default: () => undefined,
   }),
   topicEmbedding: Annotation<number[] | undefined>({
     reducer: (x, y) => y ?? x,

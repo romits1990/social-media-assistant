@@ -5,79 +5,94 @@ import {
   createSchedule,
   toggleScheduleActive,
   deleteSchedule,
+  RecurringScheduleEntity,
+  CreateScheduleInput,
 } from "@/repositories/schedule.repository";
 import {
   registerCronTask,
   unregisterCronTask,
   runScheduledPostJob,
 } from "@/services/scheduler.service";
-import { SocialPlatform } from "@/agents/agent.state";
 import { revalidatePath } from "next/cache";
 
-export async function getSchedulesAction() {
+export type ActionResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+
+export async function getSchedulesAction(): Promise<ActionResponse<RecurringScheduleEntity[]>> {
   try {
     const schedules = await getSchedules();
-    return { success: true, schedules };
+    return { success: true, data: schedules };
   } catch (error) {
-    return { success: false, error: "Failed to fetch schedules" };
+    const message = error instanceof Error ? error.message : "Failed to fetch schedules";
+    return { success: false, error: message };
   }
 }
 
-export async function createScheduleAction(data: {
-  name: string;
-  cron_expression: string;
-  platform: SocialPlatform;
-  target_topic: string;
-  target_domain: string;
-  auto_publish: boolean;
-}) {
+export async function createScheduleAction(
+  input: CreateScheduleInput
+): Promise<ActionResponse<RecurringScheduleEntity>> {
   try {
-    const newSchedule = await createSchedule(data);
+    const newSchedule = await createSchedule(input);
     registerCronTask(newSchedule);
     revalidatePath("/dashboard/schedules");
-    return { success: true, schedule: newSchedule };
+    return { success: true, data: newSchedule };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to create schedule";
-    return { success: false, error: msg };
+    const message = error instanceof Error ? error.message : "Failed to create schedule";
+    return { success: false, error: message };
   }
 }
 
-export async function toggleScheduleAction(id: string, currentStatus: boolean, scheduleData: any) {
+export async function toggleScheduleAction(
+  schedule: RecurringScheduleEntity
+): Promise<ActionResponse<boolean>> {
   try {
-    const newStatus = !currentStatus;
-    await toggleScheduleActive(id, newStatus);
+    const nextStatus = !schedule.isActive;
+    await toggleScheduleActive(schedule.id, nextStatus);
 
-    if (newStatus) {
-      registerCronTask({ ...scheduleData, id, is_active: true });
+    const updatedSchedule: RecurringScheduleEntity = {
+      ...schedule,
+      isActive: nextStatus,
+    };
+
+    if (nextStatus) {
+      registerCronTask(updatedSchedule);
     } else {
-      unregisterCronTask(id);
+      unregisterCronTask(schedule.id);
     }
 
     revalidatePath("/dashboard/schedules");
-    return { success: true, is_active: newStatus };
+    return { success: true, data: nextStatus };
   } catch (error) {
-    return { success: false, error: "Failed to toggle schedule" };
+    const message = error instanceof Error ? error.message : "Failed to toggle schedule";
+    return { success: false, error: message };
   }
 }
 
-export async function triggerScheduleNowAction(schedule: any) {
+export async function triggerScheduleNowAction(
+  schedule: RecurringScheduleEntity
+): Promise<ActionResponse<void>> {
   try {
-    await runScheduledPostJob(schedule.id, schedule);
+    await runScheduledPostJob(schedule);
     revalidatePath("/dashboard/posts");
     revalidatePath("/dashboard/schedules");
     return { success: true };
   } catch (error) {
-    return { success: false, error: "Manual execution failed" };
+    const message = error instanceof Error ? error.message : "Manual run failed";
+    return { success: false, error: message };
   }
 }
 
-export async function deleteScheduleAction(id: string) {
+export async function deleteScheduleAction(id: string): Promise<ActionResponse<void>> {
   try {
     unregisterCronTask(id);
     await deleteSchedule(id);
     revalidatePath("/dashboard/schedules");
     return { success: true };
   } catch (error) {
-    return { success: false, error: "Failed to delete schedule" };
+    const message = error instanceof Error ? error.message : "Failed to delete schedule";
+    return { success: false, error: message };
   }
 }

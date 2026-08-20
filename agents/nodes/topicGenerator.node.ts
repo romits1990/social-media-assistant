@@ -6,25 +6,32 @@ import { fetchCandidateTopic } from "@/repositories/topic.repository";
  * or selects a fresh alternative during retry loops.
  */
 export const topicGeneratorNode = async (state: AgentState): Promise<Partial<AgentState>> => {
-    // If topic is already set and this is the first attempt, proceed directly
-    if (state.targetTopic && state.retryCount === 0 && !state.attemptedTopics.includes(state.targetTopic)) {
-        console.log(`🎯 [Topic Generator] Using provided topic: "${state.targetTopic}"`);
-        return {
-            attemptedTopics: [state.targetTopic],
-            status: "IDLE",
-        };
-    }
+  const hasProvidedTopic = Boolean(state.targetTopic && state.targetTopic.trim());
+  const isFirstRun = state.retryCount === 0;
 
-    // Fetch a fresh unposted candidate topic from DB
-    const newTopic = await fetchCandidateTopic(state.attemptedTopics);
-    const nextRetryCount = state.targetTopic ? state.retryCount + 1 : state.retryCount;
-
-    console.log(`🔄 [Topic Generator] Selected fresh topic candidate (Attempt ${nextRetryCount + 1}/${state.maxRetries}): "${newTopic}"`);
-
+  // Case 1: Topic is explicitly supplied on initial run
+  if (hasProvidedTopic && isFirstRun && !state.attemptedTopics.includes(state.targetTopic!)) {
+    console.log(`🎯 [Topic Generator] Using provided seed topic: "${state.targetTopic}"`);
     return {
-        targetTopic: newTopic,
-        retryCount: nextRetryCount,
-        attemptedTopics: [newTopic],
-        status: "IDLE",
+      attemptedTopics: [state.targetTopic!],
+      status: "IDLE",
     };
+  }
+
+  // Case 2: Fetch a fresh unposted candidate topic from DB (domain-aware)
+  const newTopic = await fetchCandidateTopic(state.attemptedTopics, state.targetDomain);
+
+  // If this is a retry triggered by duplicate rejection or empty chunks, increment retryCount
+  const nextRetryCount = isFirstRun && !hasProvidedTopic ? 0 : state.retryCount + 1;
+
+  console.log(
+    `🔄 [Topic Generator] Auto-selected topic (Attempt ${nextRetryCount + 1}/${state.maxRetries}): "${newTopic}"`
+  );
+
+  return {
+    targetTopic: newTopic,
+    retryCount: nextRetryCount,
+    attemptedTopics: [newTopic],
+    status: "IDLE",
+  };
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   getSchedulesAction,
   createScheduleAction,
@@ -18,6 +18,7 @@ const CRON_PRESETS = [
   { label: "Every 6 Hours", value: "0 */6 * * *" },
   { label: "Every Monday 10 AM", value: "0 10 * * 1" },
   { label: "Every 15 Minutes (Testing)", value: "*/15 * * * *" },
+  { label: "Every Minute (Dev Testing)", value: "* * * * *" },
 ];
 
 export default function SchedulesPage() {
@@ -26,69 +27,108 @@ export default function SchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
 
-  // Form State
+  // Form State (targetTopic is now optional)
   const [name, setName] = useState("");
-  const [cronExp, setCronExp] = useState(CRON_PRESETS[0].value);
-  const [topic, setTopic] = useState("");
+  const [cronExpression, setCronExpression] = useState(CRON_PRESETS[0].value);
+  const [targetTopic, setTargetTopic] = useState("");
   const [platform, setPlatform] = useState<SocialPlatform>("linkedin");
-  const [selectedDomain, setSelectedDomain] = useState("ALL");
+  const [targetDomain, setTargetDomain] = useState("ALL");
   const [autoPublish, setAutoPublish] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const loadData = async () => {
+  const loadInitialData = useCallback(async () => {
     setLoading(true);
     const [schedRes, domRes] = await Promise.all([
       getSchedulesAction(),
       getAvailableDomainsAction(),
     ]);
 
-    if (schedRes.success && schedRes.schedules) setSchedules(schedRes.schedules);
-    if (domRes.success && domRes.domains) setDomains(domRes.domains);
+    if (schedRes.success && schedRes.data) {
+      setSchedules(schedRes.data);
+    }
+    if (domRes.success && domRes.domains) {
+      setDomains(domRes.domains);
+    }
     setLoading(false);
-  };
-
-  useEffect(() => {
-    loadData();
   }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  // Handle schedule creation with optional topic
+  const handleCreate = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    if (!name || !topic || !cronExp) return;
+    if (!name.trim()) return;
 
     setCreating(true);
     const res = await createScheduleAction({
-      name,
-      cron_expression: cronExp,
+      name: name.trim(),
+      cronExpression,
       platform,
-      target_topic: topic,
-      target_domain: selectedDomain,
-      auto_publish: autoPublish,
+      targetTopic: targetTopic.trim(),
+      targetDomain,
+      autoPublish,
     });
     setCreating(false);
 
-    if (res.success) {
+    if (res.success && res.data) {
+      setSchedules((prev) => [res.data!, ...prev]);
       setName("");
-      setTopic("");
-      loadData();
+      setTargetTopic("");
+      setAutoPublish(false);
     }
   };
 
+  // Toggle active state
   const handleToggle = async (schedule: RecurringScheduleEntity) => {
-    await toggleScheduleAction(schedule.id, schedule.is_active, schedule);
-    loadData();
+    const originalStatus = schedule.isActive;
+    const nextStatus = !originalStatus;
+
+    setSchedules((prev) =>
+      prev.map((item) =>
+        item.id === schedule.id ? { ...item, isActive: nextStatus } : item
+      )
+    );
+
+    const res = await toggleScheduleAction(schedule);
+    if (!res.success) {
+      setSchedules((prev) =>
+        prev.map((item) =>
+          item.id === schedule.id ? { ...item, isActive: originalStatus } : item
+        )
+      );
+    }
   };
 
+  // Immediate manual run
   const handleTriggerNow = async (schedule: RecurringScheduleEntity) => {
     setTriggeringId(schedule.id);
-    await triggerScheduleNowAction(schedule);
+    const res = await triggerScheduleNowAction(schedule);
     setTriggeringId(null);
-    loadData();
+
+    if (res.success) {
+      setSchedules((prev) =>
+        prev.map((item) =>
+          item.id === schedule.id
+            ? { ...item, lastRunAt: new Date().toISOString() }
+            : item
+        )
+      );
+    }
   };
 
+  // Delete schedule
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this schedule?")) return;
-    await deleteScheduleAction(id);
-    loadData();
+
+    const previousList = [...schedules];
+    setSchedules((prev) => prev.filter((item) => item.id !== id));
+
+    const res = await deleteScheduleAction(id);
+    if (!res.success) {
+      setSchedules(previousList);
+    }
   };
 
   return (
@@ -102,42 +142,54 @@ export default function SchedulesPage() {
 
       {/* Schedule Builder Form */}
       <form onSubmit={handleCreate} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-4">
-        <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Create Recurring Post Schedule</h2>
+        <div className="flex justify-between items-center border-b pb-3">
+          <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+            Create Recurring Post Schedule
+          </h2>
+          <span className="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-medium">
+            🤖 Fully Autonomous Mode Supported
+          </span>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Schedule Name</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              Schedule Name <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               required
-              placeholder="e.g. Daily Tech Tips"
+              placeholder="e.g. Daily Tech Insights"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white"
+              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Target Topic / Prompt Seed</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-semibold text-gray-700">
+                Target Topic / Seed Prompt
+              </label>
+              <span className="text-[10px] text-gray-400 font-medium">Optional</span>
+            </div>
             <input
               type="text"
-              required
-              placeholder="e.g. Frontend Architecture Best Practices"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white"
+              placeholder="Leave empty for Autonomous AI Topic Discovery ✨"
+              value={targetTopic}
+              onChange={(e) => setTargetTopic(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Cron Preset / Expression */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1">
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Frequency (Cron)</label>
             <select
-              value={cronExp}
-              onChange={(e) => setCronExp(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white"
+              value={cronExpression}
+              onChange={(e) => setCronExpression(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
             >
               {CRON_PRESETS.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
@@ -145,13 +197,12 @@ export default function SchedulesPage() {
             </select>
           </div>
 
-          {/* Platform */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Platform</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Target Platform</label>
             <select
               value={platform}
               onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
-              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white capitalize"
+              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white capitalize focus:ring-2 focus:ring-blue-500 focus:outline-none"
             >
               <option value="linkedin">LinkedIn</option>
               <option value="twitter">Twitter / X</option>
@@ -160,13 +211,12 @@ export default function SchedulesPage() {
             </select>
           </div>
 
-          {/* Domain Scope */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Source Website Domain</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Source Website Scope</label>
             <select
-              value={selectedDomain}
-              onChange={(e) => setSelectedDomain(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white"
+              value={targetDomain}
+              onChange={(e) => setTargetDomain(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md text-sm text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
             >
               <option value="ALL">🌐 All Ingested Websites</option>
               {domains.map((d) => (
@@ -175,27 +225,28 @@ export default function SchedulesPage() {
             </select>
           </div>
 
-          {/* Auto-Publish Checkbox */}
           <div className="flex items-center pt-5">
             <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={autoPublish}
                 onChange={(e) => setAutoPublish(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
               />
               <span className="text-xs font-semibold text-gray-700">Auto-Publish</span>
             </label>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={creating}
-          className="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-md hover:bg-blue-700 transition disabled:opacity-50"
-        >
-          {creating ? "Adding..." : "+ Save Recurring Schedule"}
-        </button>
+        <div className="pt-2">
+          <button
+            type="submit"
+            disabled={creating}
+            className="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-md hover:bg-blue-700 transition disabled:opacity-50"
+          >
+            {creating ? "Saving Schedule..." : "+ Save Recurring Schedule"}
+          </button>
+        </div>
       </form>
 
       {/* Schedules Table */}
@@ -203,7 +254,7 @@ export default function SchedulesPage() {
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">
             <tr>
-              <th className="px-6 py-3">Schedule Name & Topic</th>
+              <th className="px-6 py-3">Schedule & Topic Strategy</th>
               <th className="px-6 py-3">Platform</th>
               <th className="px-6 py-3">Cron & Domain</th>
               <th className="px-6 py-3">Last Run</th>
@@ -225,7 +276,15 @@ export default function SchedulesPage() {
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-semibold text-gray-900 text-xs">{s.name}</div>
-                    <div className="text-gray-500 text-[11px] truncate max-w-xs">{s.target_topic}</div>
+                    {s.targetTopic && s.targetTopic.trim() ? (
+                      <div className="text-gray-500 text-[11px] truncate max-w-xs mt-0.5">
+                        📌 {s.targetTopic}
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] font-medium mt-0.5">
+                        ✨ Autonomous Topic Discovery
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 capitalize">
@@ -233,35 +292,37 @@ export default function SchedulesPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-mono text-xs text-gray-700">{s.cron_expression}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">{s.target_domain}</div>
+                    <div className="font-mono text-xs text-gray-700">{s.cronExpression}</div>
+                    <div className="text-[11px] text-gray-400 font-mono mt-0.5">
+                      {s.targetDomain === "ALL" ? "🌐 All Websites" : `🔗 ${s.targetDomain}`}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
-                    {s.last_run_at ? new Date(s.last_run_at).toLocaleString() : "Never"}
+                    {s.lastRunAt ? new Date(s.lastRunAt).toLocaleString() : "Never"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button
                       onClick={() => handleToggle(s)}
                       className={`text-[11px] font-bold px-2.5 py-1 rounded transition ${
-                        s.is_active
+                        s.isActive
                           ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
                           : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                       }`}
                     >
-                      {s.is_active ? "● ACTIVE" : "○ PAUSED"}
+                      {s.isActive ? "● ACTIVE" : "○ PAUSED"}
                     </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right space-x-2 text-xs">
                     <button
                       onClick={() => handleTriggerNow(s)}
                       disabled={triggeringId === s.id}
-                      className="text-blue-600 hover:underline disabled:opacity-50"
+                      className="text-blue-600 hover:underline disabled:opacity-50 font-medium"
                     >
                       {triggeringId === s.id ? "Running..." : "Run Now ⚡"}
                     </button>
                     <button
                       onClick={() => handleDelete(s.id)}
-                      className="text-red-600 hover:underline"
+                      className="text-red-600 hover:underline font-medium"
                     >
                       Delete
                     </button>
