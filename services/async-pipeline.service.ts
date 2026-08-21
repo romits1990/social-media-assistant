@@ -103,7 +103,7 @@ export const executeAsyncSitemapPipeline = async (
   try {
     await updateJobProgress(jobId, { status: "PROCESSING", progressPercentage: 5 });
 
-    const rawPageUrls = await processSitemapUrl(rootUrl);
+    const rawPageUrls = await processSitemapUrl(rootUrl, fileLimit);
     const pageUrls = rawPageUrls.filter((url) => getValidUrlDetails(url).isValid);
 
     if (pageUrls.length === 0) {
