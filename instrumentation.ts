@@ -8,13 +8,19 @@ export async function register() {
       const { initializeAllSchedules, stopAllSchedules } = await import(
         "@/services/scheduler.service"
       );
+      const { warmOllamaModels } = await import("@/lib/ollama-warmer");
 
-      // 1. Initialize in background without blocking Next.js server startup
+      // 1. Asynchronously bootstrap database cron schedules
       initializeAllSchedules().catch((err) => {
         console.error("❌ [Instrumentation] Async scheduler init failed:", err);
       });
 
-      // 2. Register Signal Handlers strictly once
+      // 2. Asynchronously pre-warm Ollama models into memory (RAM/VRAM)
+      warmOllamaModels().catch((err) => {
+        console.warn("⚠️ [Instrumentation] Ollama warmup error:", err);
+      });
+
+      // 3. Register Process Signal Listeners strictly once
       if (!global._isShutdownHandlerRegistered) {
         global._isShutdownHandlerRegistered = true;
 
@@ -25,7 +31,6 @@ export async function register() {
           } catch (err) {
             console.error("❌ [Shutdown Error]:", err);
           } finally {
-            // 🎯 Required: Terminates the process once cleanup is complete
             process.exit(0);
           }
         };
@@ -34,7 +39,7 @@ export async function register() {
         process.once("SIGINT", () => handleShutdown("SIGINT"));
       }
     } catch (error) {
-      console.error("❌ [Instrumentation] Failed to bootstrap schedule manager:", error);
+      console.error("❌ [Instrumentation] Failed to bootstrap application hooks:", error);
     }
   }
 }
