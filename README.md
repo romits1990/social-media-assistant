@@ -263,3 +263,5 @@ npm run command:publisher-test
 ## 📄 License
 
 MIT License. Free for personal, educational, and open-source exploration.
+
+[![CodeFactor](https://www.codefactor.io/repository/github/romits1990/social-media-assistant/badge/main)](https://www.codefactor.io/repository/github/romits1990/social-media-assistant/overview/main)
