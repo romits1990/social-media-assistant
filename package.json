@@ -1,6 +1,7 @@
 {
   "name": "social-media-assistant",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Autonomous AI Social Media Assistant powered by LangGraph, pgvector, Ollama, and Next.js App Router",
   "private": true,
   "scripts": {
     "dev": "next dev",
